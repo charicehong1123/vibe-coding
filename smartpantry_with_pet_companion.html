@@ -1,0 +1,1616 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SmartPantry 智食家 - 智慧飲食與精靈寵物管家</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Vue 3 -->
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Noto+Sans+TC:wght@400;500;700;900&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'Noto Sans TC', 'sans-serif'] },
+                    colors: {
+                        emerald: { 50: '#ecfdf5', 100: '#d1fae5', 500: '#10b981', 600: '#059669', 700: '#047857' },
+                        amber: { 400: '#fbbf24', 500: '#f59e0b', 600: '#d97706' }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        [v-cloak] { display: none; }
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+        /* Pet Floating Animation */
+        @keyframes petFloat {
+            0%, 100% { transform: translateY(0px) rotate(0deg); }
+            50% { transform: translateY(-14px) rotate(3deg); }
+        }
+
+        /* Pet Idle Wiggle */
+        @keyframes petIdleWiggle {
+            0%, 90%, 100% { transform: scale(1); }
+            95% { transform: scale(1.08) rotate(-4deg); }
+        }
+
+        /* Pet Eating Action */
+        @keyframes petEatAction {
+            0% { transform: scale(1) rotate(0deg); }
+            20% { transform: scale(1.3) rotate(-10deg) translateY(-10px); }
+            40% { transform: scale(1.1) rotate(10deg) translateY(5px); }
+            60% { transform: scale(1.25) rotate(-8deg); }
+            80% { transform: scale(1.1) rotate(5deg); }
+            100% { transform: scale(1) rotate(0deg); }
+        }
+
+        /* Speech Bubble Pop Animation */
+        @keyframes bubblePop {
+            0% { opacity: 0; transform: scale(0.6) translateY(10px); }
+            100% { opacity: 1; transform: scale(1) translateY(0); }
+        }
+
+        .animate-pet-float {
+            animation: petFloat 4s ease-in-out infinite, petIdleWiggle 6s ease-in-out infinite;
+        }
+
+        .animate-pet-eat {
+            animation: petEatAction 0.8s ease-in-out infinite;
+        }
+
+        .animate-bubble {
+            animation: bubblePop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #f1f5f9; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 9999px; }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 antialiased font-sans min-h-screen pb-20 md:pb-6 selection:bg-emerald-200">
+    <div id="app" v-cloak class="max-w-md md:max-w-5xl mx-auto min-h-screen flex flex-col relative">
+        
+        <!-- FLOATING PET OVERLAY -->
+        <div class="fixed right-3 md:right-8 bottom-24 md:bottom-12 z-50 pointer-events-none flex flex-col items-end">
+            
+            <!-- Speech Bubble -->
+            <div v-if="petMessage" 
+                 class="pointer-events-auto mb-2 max-w-[220px] sm:max-w-[280px] bg-slate-900/95 backdrop-blur-md text-white text-xs sm:text-sm p-3.5 rounded-2xl rounded-br-none shadow-2xl border border-slate-700/80 animate-bubble relative text-left">
+                <div class="flex items-center justify-between mb-1 text-[10px] text-amber-400 font-bold border-b border-slate-800 pb-1">
+                    <span>{{ currentPet.name }} · {{ currentPet.title }}</span>
+                    <button @click="petMessage = ''" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+                </div>
+                <p class="leading-relaxed font-medium text-slate-100">{{ petMessage }}</p>
+                <!-- Bubble Tail -->
+                <div class="absolute -bottom-2 right-4 w-3 h-3 bg-slate-900 rotate-45 border-r border-b border-slate-700"></div>
+            </div>
+
+            <!-- Pet Interactive Avatar -->
+            <div @click="handlePetClick" 
+                 title="點擊跟寵物說話"
+                 class="pointer-events-auto cursor-pointer group relative flex flex-col items-center select-none transition-transform active:scale-90">
+                
+                <!-- Food Eating Particle Effect -->
+                <div v-if="isEating" class="absolute -top-6 text-xl animate-bounce z-10 font-bold text-amber-500 bg-white/90 px-2 py-0.5 rounded-full shadow border border-amber-200">
+                     Nom Nom 😋
+                </div>
+
+                <!-- Pet Graphic Container -->
+                <div :class="[isEating ? 'animate-pet-eat' : 'animate-pet-float']" 
+                     class="w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-gradient-to-b from-white/90 to-slate-100/80 shadow-2xl border-4 border-white flex items-center justify-center relative hover:scale-105 transition-transform backdrop-blur-sm">
+                    
+                    <div class="text-4xl sm:text-5xl transform transition group-hover:rotate-6">
+                        {{ currentPet.avatar }}
+                    </div>
+
+                    <span class="absolute bottom-1 right-1 w-4 h-4 bg-emerald-500 border-2 border-white rounded-full shadow-sm"></span>
+                </div>
+
+                <!-- Pet Label Tag -->
+                <div class="mt-1 bg-slate-900/80 backdrop-blur-sm text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow flex items-center space-x-1">
+                    <span>{{ currentPet.emoji }} {{ currentPet.name }}</span>
+                    <i class="fa-solid fa-comment-dots text-amber-400 text-[9px]"></i>
+                </div>
+            </div>
+        </div>
+
+        <!-- Header Nav -->
+        <header class="bg-white/95 backdrop-blur-md border-b border-slate-200 sticky top-0 z-30 px-4 py-3 shadow-sm">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-2">
+                    <div class="w-10 h-10 rounded-xl bg-emerald-500 flex items-center justify-center text-white text-xl font-bold shadow-md shadow-emerald-200">
+                        <i class="fa-solid fa-utensils"></i>
+                    </div>
+                    <div>
+                        <h1 class="font-bold text-slate-800 text-lg leading-tight flex items-center space-x-1.5">
+                            <span>智食家 SmartPantry</span>
+                        </h1>
+                        <p class="text-[11px] text-slate-500">協同購物 ‧ 食材 ‧ 飲食 ‧ 毒舌寵物管家</p>
+                    </div>
+                </div>
+                
+                <!-- Household Code & Pet Switch -->
+                <div class="flex items-center space-x-2">
+                    <button @click="showPetSelectModal = true" class="px-2.5 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 text-xs font-bold border border-amber-200 flex items-center space-x-1 transition shadow-sm">
+                        <span class="text-sm">{{ currentPet.avatar }}</span>
+                        <span class="hidden sm:inline">更換寵物</span>
+                    </button>
+
+                    <button @click="showSyncModal = true" class="px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium flex items-center space-x-1 transition">
+                        <i class="fa-solid fa-users text-emerald-600"></i>
+                        <span>{{ householdId }}</span>
+                    </button>
+
+                    <span class="inline-flex items-center px-2 py-1 rounded-full text-[10px] font-medium" :class="isSynced ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'">
+                        <span class="w-1.5 h-1.5 rounded-full mr-1" :class="isSynced ? 'bg-emerald-500' : 'bg-amber-500'"></span>
+                        {{ isSynced ? '已同步' : '本機模式' }}
+                    </span>
+                </div>
+            </div>
+
+            <!-- Desktop Nav Tabs -->
+            <div class="hidden md:flex space-x-2 mt-3 pt-2 border-t border-slate-100">
+                <button v-for="tab in tabs" :key="tab.id" @click="currentTab = tab.id" 
+                    :class="currentTab === tab.id ? 'bg-emerald-50 text-emerald-700 font-bold border-emerald-500 shadow-sm' : 'text-slate-600 hover:bg-slate-50 border-transparent'"
+                    class="flex-1 py-2 px-3 rounded-xl border-b-2 text-sm text-center flex items-center justify-center space-x-2 transition">
+                    <i :class="tab.icon"></i>
+                    <span>{{ tab.name }}</span>
+                </button>
+            </div>
+        </header>
+
+        <!-- Notification Banner / Toast -->
+        <transition enter-active-class="transform transition ease-out duration-300" enter-from-class="translate-y-2 opacity-0" enter-to-class="translate-y-0 opacity-100" leave-active-class="transition ease-in duration-100" leave-from-class="opacity-100" leave-to-class="opacity-0">
+            <div v-if="toastMessage" class="fixed top-16 left-1/2 transform -translate-x-1/2 z-50 bg-slate-900 text-white text-xs md:text-sm px-4 py-2.5 rounded-full shadow-xl flex items-center space-x-2 border border-slate-700">
+                <i class="fa-solid fa-circle-check text-emerald-400"></i>
+                <span>{{ toastMessage }}</span>
+            </div>
+        </transition>
+
+        <!-- Main Content Body -->
+        <main class="flex-1 p-4 overflow-y-auto">
+
+            <!-- 1. 多人協同購物清單 -->
+            <section v-if="currentTab === 'shopping'" class="space-y-4">
+                <div class="flex justify-between items-center">
+                    <div>
+                        <h2 class="text-xl font-black text-slate-800">🛒 協同購物清單</h2>
+                        <p class="text-xs text-slate-500">家庭成員實時共享 (代碼: {{ householdId }})</p>
+                    </div>
+                    <button @click="showAddShoppingModal = true" class="bg-emerald-600 hover:bg-emerald-700 text-white text-sm px-3.5 py-2 rounded-xl shadow-sm flex items-center space-x-1 font-medium transition">
+                        <i class="fa-solid fa-plus"></i>
+                        <span>新增項目</span>
+                    </button>
+                </div>
+
+                <!-- Category Quick Filters -->
+                <div class="flex space-x-2 overflow-x-auto hide-scrollbar py-1">
+                    <button v-for="cat in shoppingCategories" :key="cat" @click="selectedShoppingCategory = cat"
+                        :class="selectedShoppingCategory === cat ? 'bg-slate-800 text-white font-bold' : 'bg-white border border-slate-200 text-slate-600'"
+                        class="px-3.5 py-1.5 rounded-xl text-xs whitespace-nowrap font-medium transition">
+                        {{ cat }}
+                    </button>
+                </div>
+
+                <!-- Shopping Items List -->
+                <div class="bg-white rounded-2xl shadow-sm border border-slate-200 divide-y divide-slate-100">
+                    <div v-if="filteredShoppingList.length === 0" class="p-8 text-center text-slate-400 text-sm">
+                        <i class="fa-solid fa-basket-shopping text-4xl mb-2 text-slate-200"></i>
+                        <p>購物清單目前是空的，快來新增採購項目！</p>
+                    </div>
+
+                    <div v-for="item in filteredShoppingList" :key="item.id" 
+                        class="p-3.5 flex items-center justify-between hover:bg-slate-50/50 transition">
+                        <div class="flex items-center space-x-3 flex-1 min-w-0">
+                            <input type="checkbox" :checked="item.bought" @change="toggleShoppingBought(item)" 
+                                class="w-5 h-5 rounded text-emerald-600 focus:ring-emerald-500 border-slate-300 cursor-pointer">
+                            <div :class="{'line-through text-slate-400': item.bought}" class="truncate">
+                                <span class="font-bold text-slate-800">{{ item.name }}</span>
+                                <span class="text-xs text-slate-400 ml-2">x{{ item.qty }}</span>
+                                <span v-if="item.estimatedPrice" class="text-xs font-semibold text-emerald-600 ml-2">約 ${{ item.estimatedPrice }}</span>
+                                <div class="text-[10px] text-slate-400 flex items-center space-x-2 mt-0.5">
+                                    <span class="bg-slate-100 px-1.5 py-0.5 rounded text-slate-500 font-medium">{{ item.category }}</span>
+                                    <span>新增者: 家庭成員</span>
+                                </div>
+                            </div>
+                        </div>
+                        <button @click="deleteShoppingItem(item.id)" class="text-slate-300 hover:text-red-500 p-2 transition">
+                            <i class="fa-solid fa-trash-can"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Action: Import Checked to Fridge & Sync Budget -->
+                <div v-if="hasBoughtItems" class="bg-emerald-50/80 border border-emerald-200 rounded-2xl p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3 shadow-sm">
+                    <div class="flex items-center space-x-3">
+                        <div class="w-10 h-10 rounded-2xl bg-emerald-500 text-white flex items-center justify-center font-bold text-lg shadow-sm">
+                            <i class="fa-solid fa-file-import"></i>
+                        </div>
+                        <div>
+                            <p class="text-sm font-bold text-emerald-900">有 {{ boughtCount }} 項物品已採購完成</p>
+                            <p class="text-xs text-emerald-700">可將其一鍵自動轉入雪櫃食材，並同步寫入預算開支</p>
+                        </div>
+                    </div>
+                    <button @click="importBoughtToFridge" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs md:text-sm font-bold px-4 py-2.5 rounded-xl shadow transition text-center whitespace-nowrap flex items-center justify-center space-x-1">
+                        <span>🚀 一鍵匯入雪櫃 & 記帳 (${{ totalBoughtCost }})</span>
+                    </button>
+                </div>
+            </section>
+
+            <!-- 2. 雪櫃食材管家 -->
+            <section v-if="currentTab === 'fridge'" class="space-y-4">
+                <div class="flex justify-between items-center">
+                    <div>
+                        <h2 class="text-xl font-black text-slate-800">🧊 雪櫃食材管家</h2>
+                        <p class="text-xs text-slate-500">保質期監控與 AI 創意料理推薦</p>
+                    </div>
+                    <div class="flex space-x-2">
+                        <button @click="getAiRecipeRecommendation" :disabled="aiLoading" class="bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white text-xs md:text-sm px-3.5 py-2 rounded-xl shadow-sm flex items-center space-x-1 font-bold transition disabled:opacity-50">
+                            <i class="fa-solid fa-wand-magic-sparkles"></i>
+                            <span>{{ aiLoading ? '產生食譜中...' : '✨ AI 推薦食譜' }}</span>
+                        </button>
+                        <button @click="openAddFridgeModal" class="bg-emerald-600 hover:bg-emerald-700 text-white text-sm px-3 py-2 rounded-xl shadow-sm flex items-center space-x-1 font-medium transition">
+                            <i class="fa-solid fa-plus"></i>
+                            <span class="hidden sm:inline text-xs font-bold ml-1">新增食材</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Expiring Alert Banner -->
+                <div v-if="expiringItems.length > 0" class="bg-red-50 border border-red-200 rounded-2xl p-3.5 flex items-center space-x-3 text-red-800 text-xs shadow-sm">
+                    <i class="fa-solid fa-triangle-exclamation text-red-500 text-xl"></i>
+                    <div>
+                        <span class="font-bold">到期提醒：</span> 有 <span class="font-bold underline text-red-600">{{ expiringItems.length }}</span> 項食材即將到期或已過期，請儘快食用！
+                    </div>
+                </div>
+
+                <!-- Grid of Fridge Items -->
+                <div v-if="fridgeList.length === 0" class="bg-white p-8 rounded-2xl border border-slate-200 text-center text-slate-400 text-sm">
+                    <i class="fa-solid fa-box-open text-4xl mb-2 text-slate-200"></i>
+                    <p>雪櫃裡空空如也，點擊右上角「+」或從購物清單匯入食材吧！</p>
+                </div>
+
+                <div v-else class="grid grid-cols-2 md:grid-cols-3 gap-3">
+                    <div v-for="item in fridgeList" :key="item.id" 
+                        class="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between relative hover:border-emerald-300 transition">
+                        <div class="flex justify-between items-start mb-2">
+                            <span class="text-[11px] font-bold px-2 py-0.5 rounded-full" :class="getDaysLeftClass(item.expiryDate)">
+                                {{ getDaysLeftText(item.expiryDate) }}
+                            </span>
+                            <button @click="deleteFridgeItem(item.id)" class="text-slate-300 hover:text-red-400 text-xs p-1">
+                                <i class="fa-solid fa-xmark"></i>
+                            </button>
+                        </div>
+
+                        <div>
+                            <h3 class="font-bold text-slate-800 text-sm truncate">{{ item.name }}</h3>
+                            <p class="text-xs text-slate-500">數量: {{ item.qty }}</p>
+                        </div>
+
+                        <div class="mt-3 pt-2 border-t border-slate-100 flex justify-between items-center text-[10px] text-slate-400">
+                            <div class="flex items-center space-x-1">
+                                <span>到期:</span>
+                                <input type="date" v-model="item.expiryDate" @change="syncDataToFirebase('fridge')" 
+                                       class="bg-slate-50 hover:bg-slate-100 text-slate-700 font-semibold px-1.5 py-0.5 rounded border border-slate-200 outline-none text-[10px] cursor-pointer transition">
+                            </div>
+                            <span class="bg-slate-100 px-1.5 py-0.5 rounded font-medium">{{ item.category }}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- AI Recipe Modal Display -->
+                <div v-if="aiRecipe" class="bg-amber-50/90 border border-amber-200 rounded-2xl p-4 space-y-3 shadow-md relative">
+                    <div class="flex justify-between items-center border-b border-amber-200 pb-2">
+                        <h3 class="font-bold text-amber-900 flex items-center space-x-1.5">
+                            <i class="fa-solid fa-utensils text-amber-600"></i>
+                            <span>AI 推薦料理：{{ aiRecipe.recipeName }}</span>
+                        </h3>
+                        <button @click="aiRecipe = null" class="text-amber-700 text-xs hover:underline font-bold">關閉</button>
+                    </div>
+                    <p class="text-xs text-amber-900 leading-relaxed">{{ aiRecipe.description }}</p>
+                    
+                    <div class="text-xs space-y-1">
+                        <p class="font-bold text-amber-900">需要食材：</p>
+                        <div class="flex flex-wrap gap-1.5">
+                            <span v-for="ing in aiRecipe.ingredients" :key="ing.name" 
+                                class="px-2 py-1 rounded-lg text-[11px] font-medium" 
+                                :class="ing.inFridge ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : 'bg-red-100 text-red-800 font-bold border border-red-200'">
+                                {{ ing.name }} {{ ing.inFridge ? '✓' : '(缺)' }}
+                            </span>
+                        </div>
+                    </div>
+
+                    <div v-if="aiRecipe.missingIngredients && aiRecipe.missingIngredients.length > 0" class="pt-2">
+                        <button @click="addMissingToShoppingList(aiRecipe.missingIngredients)" class="w-full bg-amber-600 hover:bg-amber-700 text-white text-xs py-2.5 rounded-xl font-bold shadow transition">
+                            🛒 將缺少的 {{ aiRecipe.missingIngredients.length }} 項食材一鍵加入購物清單
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 3. 飲食紀錄模組 -->
+            <section v-if="currentTab === 'diet'" class="space-y-4">
+                <div class="flex justify-between items-center">
+                    <div>
+                        <h2 class="text-xl font-black text-slate-800">🥗 飲食營養紀錄</h2>
+                        <p class="text-xs text-slate-500">記錄餐點時，寵物會吃掉食物並隨機評價！</p>
+                    </div>
+                    <button @click="showAddDietModal = true" class="bg-emerald-600 hover:bg-emerald-700 text-white text-sm px-3.5 py-2 rounded-xl shadow-sm flex items-center space-x-1 font-medium transition">
+                        <i class="fa-solid fa-plus"></i>
+                        <span>記錄餐點</span>
+                    </button>
+                </div>
+
+                <!-- Daily Summary Gauge -->
+                <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                    <div class="flex justify-between items-end">
+                        <div>
+                            <p class="text-xs text-slate-400 font-medium">今日總攝取熱量</p>
+                            <p class="text-2xl font-black text-slate-800">
+                                {{ totalTodayCalories }} <span class="text-xs font-normal text-slate-500">/ {{ calorieTarget }} kcal</span>
+                            </p>
+                        </div>
+                        <div class="text-right">
+                            <span class="text-xs font-bold px-2.5 py-1 rounded-full" :class="calorieProgress <= 100 ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'">
+                                {{ calorieProgress }}% 目標
+                            </span>
+                        </div>
+                    </div>
+
+                    <!-- Progress Bar -->
+                    <div class="w-full bg-slate-100 h-3 rounded-full overflow-hidden">
+                        <div class="bg-emerald-500 h-full rounded-full transition-all duration-500" :style="{ width: Math.min(calorieProgress, 100) + '%' }"></div>
+                    </div>
+
+                    <!-- Macro Nutrients Breakdown -->
+                    <div class="grid grid-cols-3 gap-2 pt-2 border-t border-slate-100 text-center text-xs">
+                        <div class="bg-slate-50 p-2 rounded-xl">
+                            <p class="text-slate-400 text-[10px]">蛋白質</p>
+                            <p class="font-bold text-slate-700">{{ todayMacros.protein }}g</p>
+                        </div>
+                        <div class="bg-slate-50 p-2 rounded-xl">
+                            <p class="text-slate-400 text-[10px]">碳水化合物</p>
+                            <p class="font-bold text-slate-700">{{ todayMacros.carbs }}g</p>
+                        </div>
+                        <div class="bg-slate-50 p-2 rounded-xl">
+                            <p class="text-slate-400 text-[10px]">脂肪</p>
+                            <p class="font-bold text-slate-700">{{ todayMacros.fat }}g</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Meal Logs List -->
+                <div class="space-y-2">
+                    <h3 class="text-sm font-bold text-slate-700">今日餐點紀錄</h3>
+                    <div v-if="todayDietLogs.length === 0" class="bg-white p-6 rounded-2xl text-center text-slate-400 text-xs border border-slate-200">
+                        今日尚無飲食紀錄，點擊右上角新增吧！
+                    </div>
+
+                    <div v-for="log in todayDietLogs" :key="log.id" 
+                        class="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
+                        <div class="flex items-center space-x-3">
+                            <div class="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold text-sm">
+                                {{ getMealIcon(log.mealType) }}
+                            </div>
+                            <div>
+                                <h4 class="font-bold text-slate-800 text-sm">{{ log.foodName }}</h4>
+                                <p class="text-[11px] text-slate-400">
+                                    {{ log.mealType }} ‧ 蛋 {{ log.protein }}g | 碳 {{ log.carbs }}g | 脂 {{ log.fat }}g
+                                </p>
+                            </div>
+                        </div>
+                        <div class="flex items-center space-x-3">
+                            <div class="text-right">
+                                <span class="font-black text-slate-800 text-sm">{{ log.calories }} kcal</span>
+                                <p v-if="log.cost" class="text-[10px] text-emerald-600 font-bold">${{ log.cost }}</p>
+                            </div>
+                            <button @click="deleteDietLog(log.id)" class="text-slate-300 hover:text-red-400 p-1">
+                                <i class="fa-solid fa-trash-can text-xs"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 4. 月度預算規劃 -->
+            <section v-if="currentTab === 'budget'" class="space-y-4">
+                <div class="flex justify-between items-center">
+                    <div>
+                        <h2 class="text-xl font-black text-slate-800">💰 月度預算規劃</h2>
+                        <p class="text-xs text-slate-500">消費上限管理，自動同步採購與膳食開支</p>
+                    </div>
+                    <div class="flex space-x-2">
+                        <button @click="openEditBudgetModal" class="bg-slate-800 hover:bg-slate-900 text-white text-xs md:text-sm px-3.5 py-2 rounded-xl shadow-sm flex items-center space-x-1 font-bold transition">
+                            <i class="fa-solid fa-pen-to-square"></i>
+                            <span>設定預算</span>
+                        </button>
+                        <button @click="showAddExpenseModal = true" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs md:text-sm px-3.5 py-2 rounded-xl shadow-sm flex items-center space-x-1 font-bold transition">
+                            <i class="fa-solid fa-plus"></i>
+                            <span>手動記帳</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Monthly Overall Card -->
+                <div class="bg-slate-900 text-white p-5 rounded-2xl shadow-md space-y-4 relative overflow-hidden">
+                    <div class="flex justify-between items-start relative z-10">
+                        <div>
+                            <p class="text-xs text-slate-400">本月總支出</p>
+                            <h3 class="text-3xl font-black">${{ totalMonthlySpent }}</h3>
+                        </div>
+                        <div class="text-right">
+                            <p class="text-xs text-slate-400">自定義預算上限</p>
+                            <p class="text-xl font-extrabold text-amber-400">${{ budgetConfig.totalBudget }}</p>
+                        </div>
+                    </div>
+
+                    <!-- Progress Gauge -->
+                    <div class="space-y-1 relative z-10">
+                        <div class="w-full bg-slate-800 h-3 rounded-full overflow-hidden">
+                            <div class="h-full rounded-full transition-all duration-500" 
+                                :class="overallBudgetProgress >= 100 ? 'bg-red-500' : overallBudgetProgress >= 80 ? 'bg-amber-400' : 'bg-emerald-400'"
+                                :style="{ width: Math.min(overallBudgetProgress, 100) + '%' }"></div>
+                        </div>
+                        <div class="flex justify-between text-[11px] text-slate-400">
+                            <span>預算使用率 {{ overallBudgetProgress }}%</span>
+                            <span>剩餘可支用: ${{ Math.max(0, budgetConfig.totalBudget - totalMonthlySpent) }}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Transactions History -->
+                <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 space-y-3">
+                    <div class="flex justify-between items-center">
+                        <h3 class="font-bold text-slate-800 text-sm">本月開支明細</h3>
+                        <span class="text-xs text-slate-400">共 {{ filteredBudgetTransactions.length }} 筆筆數</span>
+                    </div>
+                    <div v-if="filteredBudgetTransactions.length === 0" class="text-center py-6 text-slate-400 text-xs">
+                        本月尚無消費紀錄，可以嘗試手動記帳或從購物清單「一鍵匯入雪櫃 & 記帳」！
+                    </div>
+                    <div class="divide-y divide-slate-100">
+                        <div v-for="t in filteredBudgetTransactions" :key="t.id" class="py-2.5 flex justify-between items-center text-xs">
+                            <div>
+                                <p class="font-bold text-slate-800">{{ t.title }}</p>
+                                <p class="text-[10px] text-slate-400">{{ t.date }} ‧ {{ t.category }}</p>
+                            </div>
+                            <div class="flex items-center space-x-2">
+                                <span class="font-bold text-slate-800 text-sm">-${{ t.amount }}</span>
+                                <button @click="deleteExpenseTransaction(t.id)" class="text-slate-300 hover:text-red-400 p-1">
+                                    <i class="fa-solid fa-xmark"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- MODAL 1: 寵物形象選擇彈窗 -->
+        <div v-if="showPetSelectModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-50 flex items-center justify-center p-4">
+            <div class="bg-white rounded-3xl w-full max-w-md p-6 space-y-5 shadow-2xl relative overflow-hidden">
+                <div class="text-center space-y-1">
+                    <span class="px-3 py-1 bg-amber-100 text-amber-800 text-xs font-bold rounded-full">專屬精靈夥伴</span>
+                    <h3 class="text-2xl font-black text-slate-800 mt-1">選擇你的刻薄小精靈 🐾</h3>
+                    <p class="text-xs text-slate-500">此精靈將常駐畫面，隨時吐槽你的飲食習慣！</p>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div v-for="pet in petOptions" :key="pet.id"
+                         @click="tempSelectedPetId = pet.id"
+                         :class="tempSelectedPetId === pet.id ? 'border-amber-500 bg-amber-50/60 ring-2 ring-amber-400' : 'border-slate-200 bg-slate-50 hover:bg-slate-100'"
+                         class="p-4 rounded-2xl border-2 cursor-pointer transition flex flex-col items-center text-center space-y-2 relative">
+                        
+                        <span v-if="tempSelectedPetId === pet.id" class="absolute top-2 right-2 text-amber-500 text-sm">
+                            <i class="fa-solid fa-circle-check"></i>
+                        </span>
+
+                        <div class="text-4xl transform hover:scale-110 transition">{{ pet.avatar }}</div>
+                        <div>
+                            <h4 class="font-bold text-slate-800 text-sm">{{ pet.name }}</h4>
+                            <p class="text-[10px] text-amber-600 font-bold mt-0.5">{{ pet.title }}</p>
+                        </div>
+                        <p class="text-[10px] text-slate-400 leading-tight">{{ pet.description }}</p>
+                    </div>
+                </div>
+
+                <div class="pt-2 flex space-x-2">
+                    <button v-if="selectedPetId" @click="showPetSelectModal = false" class="flex-1 py-3 rounded-xl bg-slate-100 text-slate-600 text-xs font-bold">
+                        取消
+                    </button>
+                    <button @click="confirmPetSelection" class="flex-1 py-3 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white text-xs font-bold shadow-lg transition">
+                        確認選定寵物
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- MODAL 2: 寵物手動對話 Modal -->
+        <div v-if="showPetChatModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div class="bg-white rounded-3xl w-full max-w-sm p-5 space-y-4 shadow-2xl border border-slate-100">
+                <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+                    <div class="flex items-center space-x-2">
+                        <span class="text-3xl">{{ currentPet.avatar }}</span>
+                        <div>
+                            <h3 class="font-bold text-slate-800 text-sm">{{ currentPet.name }}</h3>
+                            <p class="text-[10px] text-amber-600 font-semibold">{{ currentPet.title }}</p>
+                        </div>
+                    </div>
+                    <button @click="showPetChatModal = false" class="text-slate-400 hover:text-slate-600">
+                        <i class="fa-solid fa-xmark text-lg"></i>
+                    </button>
+                </div>
+
+                <div class="bg-slate-900 text-white p-4 rounded-2xl space-y-1 relative">
+                    <p class="text-[10px] text-amber-400 font-bold"><i class="fa-solid fa-quote-left mr-1"></i>寵物即時回覆：</p>
+                    <p class="text-xs sm:text-sm font-medium leading-relaxed">{{ currentPetChatReply || '找我有何貴幹？別想叫我誇你！' }}</p>
+                </div>
+
+                <div class="space-y-2">
+                    <label class="block text-xs font-bold text-slate-600">想跟 {{ currentPet.name }} 說什麼？</label>
+                    <div class="flex space-x-2">
+                        <input type="text" v-model="userChatInput" @keyup.enter="sendManualPetChat" placeholder="例如：我今天很乖沒吃宵夜..." 
+                               class="flex-1 p-2.5 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-amber-500 outline-none">
+                        <button @click="sendManualPetChat" class="px-4 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-bold transition">
+                            傳送
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal: Add Shopping Item -->
+        <div v-if="showAddShoppingModal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div class="bg-white rounded-2xl w-full max-w-sm p-5 space-y-4 shadow-xl">
+                <h3 class="font-bold text-slate-800">新增購物項目</h3>
+                <div class="space-y-3 text-xs">
+                    <div>
+                        <label class="block text-slate-600 mb-1 font-bold">食材/品名 <span class="text-red-500">*</span></label>
+                        <input type="text" v-model="newShopping.name" placeholder="例如: 豬肉 / 珍珠奶茶" class="w-full p-2.5 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-emerald-500">
+                    </div>
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <label class="block text-slate-600 mb-1">分類</label>
+                            <select v-model="newShopping.category" class="w-full p-2.5 rounded-xl border border-slate-200 outline-none">
+                                <option v-for="c in categoriesWithoutAll" :key="c" :value="c">{{ c }}</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-slate-600 mb-1">數量</label>
+                            <input type="text" v-model="newShopping.qty" placeholder="如 1盒 / 500g" class="w-full p-2.5 rounded-xl border border-slate-200 outline-none">
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <label class="block text-slate-600 mb-1">預估金額 ($)</label>
+                            <input type="number" v-model.number="newShopping.estimatedPrice" placeholder="例如 40" class="w-full p-2.5 rounded-xl border border-slate-200 outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-slate-600 mb-1">保質期 (天，預設7)</label>
+                            <input type="number" v-model.number="newShopping.expiryDays" placeholder="7" min="1" class="w-full p-2.5 rounded-xl border border-slate-200 outline-none font-semibold text-emerald-600">
+                        </div>
+                    </div>
+                </div>
+                <div class="flex space-x-2 pt-2">
+                    <button @click="showAddShoppingModal = false" class="flex-1 py-2 rounded-xl bg-slate-100 text-slate-600 text-xs font-semibold">取消</button>
+                    <button @click="addShoppingItem" class="flex-1 py-2 rounded-xl bg-emerald-600 text-white text-xs font-semibold shadow">新增至清單</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal: Add Fridge Item (With Default 7 Days Expiry & Custom Input) -->
+        <div v-if="showAddFridgeModal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div class="bg-white rounded-2xl w-full max-w-sm p-5 space-y-4 shadow-xl">
+                <div class="flex justify-between items-center">
+                    <h3 class="font-bold text-slate-800">新增雪櫃食材</h3>
+                    <button @click="showAddFridgeModal = false" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark"></i></button>
+                </div>
+
+                <div class="space-y-3 text-xs">
+                    <div>
+                        <label class="block text-slate-600 mb-1 font-bold">食材名稱 <span class="text-red-500">*</span></label>
+                        <input type="text" v-model="newFridge.name" placeholder="例如: 雞胸肉 / 鮮奶" class="w-full p-2.5 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-emerald-500">
+                    </div>
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <label class="block text-slate-600 mb-1">分類</label>
+                            <select v-model="newFridge.category" class="w-full p-2.5 rounded-xl border border-slate-200 outline-none">
+                                <option v-for="c in categoriesWithoutAll" :key="c" :value="c">{{ c }}</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-slate-600 mb-1">數量</label>
+                            <input type="text" v-model="newFridge.qty" placeholder="如 200g" class="w-full p-2.5 rounded-xl border border-slate-200 outline-none">
+                        </div>
+                    </div>
+
+                    <!-- Expiry Preset & Custom Days Selector -->
+                    <div>
+                        <div class="flex justify-between items-center mb-1">
+                            <label class="block text-slate-600 font-medium">保質期 (可自定義天數)</label>
+                            <div class="flex items-center space-x-1 text-slate-500">
+                                <input type="number" v-model.number="newFridge.expiryDays" @input="onExpiryDaysChange" min="1" max="365" placeholder="7"
+                                       class="w-16 p-1 text-center font-bold text-emerald-600 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-emerald-500">
+                                <span class="text-[11px] font-semibold">天</span>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-4 gap-1.5 mb-2">
+                            <button v-for="days in [3, 7, 14, 30]" :key="days" 
+                                    @click="setPresetExpiryDays(days)"
+                                    :class="newFridge.expiryDays === days ? 'bg-emerald-600 text-white font-bold' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'"
+                                    class="py-1.5 rounded-lg text-xs transition">
+                                {{ days }} 天
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <label class="block text-slate-600 mb-1">購入日期</label>
+                            <input type="date" v-model="newFridge.purchaseDate" @change="onPurchaseDateChange" class="w-full p-2 rounded-xl border border-slate-200 outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-slate-600 mb-1">到期日 (直接選日曆)</label>
+                            <input type="date" v-model="newFridge.expiryDate" class="w-full p-2 rounded-xl border border-slate-200 outline-none font-semibold text-slate-700">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex space-x-2 pt-2">
+                    <button @click="showAddFridgeModal = false" class="flex-1 py-2 rounded-xl bg-slate-100 text-slate-600 text-xs font-semibold">取消</button>
+                    <button @click="addFridgeItem" class="flex-1 py-2 rounded-xl bg-emerald-600 text-white text-xs font-semibold shadow">儲存食材</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal: Edit Custom Monthly Budget -->
+        <div v-if="showEditBudgetModal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div class="bg-white rounded-2xl w-full max-w-sm p-5 space-y-4 shadow-xl">
+                <div class="flex justify-between items-center">
+                    <h3 class="font-bold text-slate-800">⚙️ 設定自定義月度預算</h3>
+                    <button @click="showEditBudgetModal = false" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark"></i></button>
+                </div>
+                <div class="space-y-3 text-xs">
+                    <p class="text-slate-500">設定本月餐飲與食材採購的總金額上限：</p>
+                    <div>
+                        <label class="block text-slate-600 mb-1 font-bold">預算金額 ($)</label>
+                        <input type="number" v-model.number="tempBudget" placeholder="例如: 5000" class="w-full p-2.5 rounded-xl border border-slate-200 text-base font-bold text-emerald-600 outline-none focus:ring-2 focus:ring-emerald-500">
+                    </div>
+                </div>
+                <div class="flex space-x-2 pt-2">
+                    <button @click="showEditBudgetModal = false" class="flex-1 py-2 rounded-xl bg-slate-100 text-slate-600 text-xs font-semibold">取消</button>
+                    <button @click="saveCustomBudget" class="flex-1 py-2 rounded-xl bg-emerald-600 text-white text-xs font-semibold shadow">儲存設定</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal: Add Expense Transaction -->
+        <div v-if="showAddExpenseModal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div class="bg-white rounded-2xl w-full max-w-sm p-5 space-y-4 shadow-xl">
+                <h3 class="font-bold text-slate-800">手動新增開支紀錄</h3>
+                <div class="space-y-3 text-xs">
+                    <div>
+                        <label class="block text-slate-600 mb-1 font-bold">項目名稱 <span class="text-red-500">*</span></label>
+                        <input type="text" v-model="newExpense.title" placeholder="例如: 買豬肉 / 晚餐便當" class="w-full p-2.5 rounded-xl border border-slate-200 outline-none">
+                    </div>
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <label class="block text-slate-600 mb-1">金額 ($) <span class="text-red-500">*</span></label>
+                            <input type="number" v-model.number="newExpense.amount" placeholder="40" class="w-full p-2.5 rounded-xl border border-slate-200 outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-slate-600 mb-1">分類</label>
+                            <select v-model="newExpense.category" class="w-full p-2.5 rounded-xl border border-slate-200 outline-none">
+                                <option>食材採購</option>
+                                <option>餐飲膳食</option>
+                                <option>零食飲料</option>
+                                <option>其他開支</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-slate-600 mb-1">日期</label>
+                        <input type="date" v-model="newExpense.date" class="w-full p-2.5 rounded-xl border border-slate-200 outline-none">
+                    </div>
+                </div>
+                <div class="flex space-x-2 pt-2">
+                    <button @click="showAddExpenseModal = false" class="flex-1 py-2 rounded-xl bg-slate-100 text-slate-600 text-xs font-semibold">取消</button>
+                    <button @click="addExpenseTransaction" class="flex-1 py-2 rounded-xl bg-emerald-600 text-white text-xs font-semibold shadow">寫入月度預算</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal: Add Diet Log -->
+        <div v-if="showAddDietModal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div class="bg-white rounded-2xl w-full max-w-sm p-5 space-y-4 shadow-xl">
+                <h3 class="font-bold text-slate-800">紀錄餐點 (寵物準備吐槽)</h3>
+                <div class="space-y-3 text-xs">
+                    <div>
+                        <label class="block text-slate-600 mb-1">餐點類型</label>
+                        <select v-model="newDiet.mealType" class="w-full p-2.5 rounded-xl border border-slate-200 outline-none">
+                            <option>早餐</option>
+                            <option>午餐</option>
+                            <option>晚餐</option>
+                            <option>點心/宵夜</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-slate-600 mb-1">食物名稱</label>
+                        <div class="flex space-x-1">
+                            <input type="text" v-model="newDiet.foodName" placeholder="例如: 炸雞便當 / 珍珠奶茶" class="flex-1 p-2.5 rounded-xl border border-slate-200 outline-none">
+                            <button @click="autoEstimateNutrition" :disabled="aiLoading" class="px-3 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-medium whitespace-nowrap transition">
+                                {{ aiLoading ? '估算中' : '✨ AI估算' }}
+                            </button>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <label class="block text-slate-600 mb-1">卡路里 (kcal)</label>
+                            <input type="number" v-model.number="newDiet.calories" class="w-full p-2.5 rounded-xl border border-slate-200 outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-slate-600 mb-1">餐點費用 ($)</label>
+                            <input type="number" v-model.number="newDiet.cost" placeholder="0" class="w-full p-2.5 rounded-xl border border-slate-200 outline-none">
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-3 gap-1">
+                        <div>
+                            <label class="block text-slate-500 text-[10px]">蛋白質(g)</label>
+                            <input type="number" v-model.number="newDiet.protein" class="w-full p-2 rounded-lg border border-slate-200 outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-slate-500 text-[10px]">碳水(g)</label>
+                            <input type="number" v-model.number="newDiet.carbs" class="w-full p-2 rounded-lg border border-slate-200 outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-slate-500 text-[10px]">脂肪(g)</label>
+                            <input type="number" v-model.number="newDiet.fat" class="w-full p-2 rounded-lg border border-slate-200 outline-none">
+                        </div>
+                    </div>
+                </div>
+                <div class="flex space-x-2 pt-2">
+                    <button @click="showAddDietModal = false" class="flex-1 py-2 rounded-xl bg-slate-100 text-slate-600 text-xs font-semibold">取消</button>
+                    <button @click="addDietLog" class="flex-1 py-2 rounded-xl bg-emerald-600 text-white text-xs font-semibold shadow">儲存並讓寵物吃掉</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal: Household Code Settings -->
+        <div v-if="showSyncModal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div class="bg-white rounded-2xl w-full max-w-md p-5 space-y-4 shadow-xl">
+                <div class="flex justify-between items-center">
+                    <h3 class="font-bold text-slate-800 flex items-center space-x-1.5">
+                        <i class="fa-solid fa-users text-emerald-600"></i>
+                        <span>家庭群組與身分設定</span>
+                    </h3>
+                    <button @click="showSyncModal = false" class="text-slate-400 hover:text-slate-600">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+
+                <div class="space-y-3 text-xs">
+                    <div class="bg-emerald-50/80 p-3 rounded-xl border border-emerald-200">
+                        <div class="flex justify-between items-center mb-1">
+                            <span class="font-bold text-emerald-900 flex items-center space-x-1">
+                                <i class="fa-solid fa-fingerprint text-emerald-600"></i>
+                                <span>User ID (UID)</span>
+                            </span>
+                            <button @click="copyUserId" class="px-2 py-0.5 bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold rounded transition">
+                                複製 UID
+                            </button>
+                        </div>
+                        <p class="text-[11px] font-mono font-semibold text-emerald-800 break-all bg-white/80 p-2 rounded border border-emerald-100 select-all">
+                            {{ currentUserId || '未取得 UID / 載入中...' }}
+                        </p>
+                    </div>
+
+                    <div class="bg-slate-50 p-3 rounded-xl border border-slate-200">
+                        <label class="block text-slate-500 mb-1 font-medium">當前家庭代碼</label>
+                        <div class="flex items-center space-x-2">
+                            <span class="text-base font-bold text-slate-800 tracking-wider flex-1">{{ householdId }}</span>
+                            <button @click="copyHouseholdCode" class="px-2.5 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg font-medium transition">
+                                複製代碼
+                            </button>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-slate-600 mb-1 font-medium">切換 / 加入其他家庭群組</label>
+                        <div class="flex space-x-2">
+                            <input type="text" v-model="tempHouseholdId" placeholder="輸入家庭代碼" class="flex-1 p-2.5 rounded-xl border border-slate-200 outline-none uppercase font-semibold">
+                            <button @click="updateHouseholdId" class="px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold">套用</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Mobile Bottom Nav -->
+        <nav class="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 px-2 py-1.5 z-40 flex justify-around items-center">
+            <button v-for="tab in tabs" :key="tab.id" @click="currentTab = tab.id"
+                :class="currentTab === tab.id ? 'text-emerald-600 font-bold' : 'text-slate-400'"
+                class="flex flex-col items-center p-1 space-y-0.5 text-xs transition">
+                <i :class="tab.icon" class="text-base"></i>
+                <span class="text-[10px]">{{ tab.name }}</span>
+            </button>
+        </nav>
+
+    </div>
+
+    <!-- Firebase SDK & Vue Logic Script -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Global Firebase Setup
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'smartpantry-app';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
+            apiKey: "demo-api-key",
+            authDomain: "demo.firebaseapp.com",
+            projectId: "demo-project",
+            storageBucket: "demo.appspot.com",
+            messagingSenderId: "123456789",
+            appId: "1:123456789:web:demo"
+        };
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        let app, auth, db;
+        try {
+            app = initializeApp(firebaseConfig);
+            auth = getAuth(app);
+            db = getFirestore(app);
+        } catch (e) {
+            console.warn("Firebase initialize warning:", e);
+        }
+
+        // PET DIALOGUE LIBRARY
+        const PET_QUOTES = {
+            high_cal: [
+                "又吃這種高熱量垃圾？你的體重計明天要哭了！",
+                "還敢買這個？糖分跟油都快溢出來了，一點自制力都沒有！",
+                "這頓吃完，你可能要在跑步機上跑三天三夜才能贖罪。",
+                "這種熱量炸彈你也吞得下去？我看了都替你的血管緊張！",
+                "吃吧吃吧，明天體重計上的數字會給你最真誠的反饋。"
+            ],
+            low_cal: [
+                "噢，終於選個正常的，不過別驕傲，堅持一天不算什麼！",
+                "勉強合格，別以為你很自律，昨天吃的還沒消化完呢。",
+                "這還差不多，難得看到你做出清醒的選擇。",
+                "雖然熱量低，但量吃太多一樣會發胖，別沾沾自喜。"
+            ],
+            chat: [
+                "講重點，別浪費我時間。",
+                "與其跟我聊天，不如去多喝兩杯溫開水。",
+                "少廢話，今天水喝夠了沒？",
+                "你以為跟我撒嬌，卡路里就會自動歸零嗎？"
+            ]
+        };
+
+        const PET_OPTIONS = [
+            { id: 'cat', name: '傲嬌小貓咪', title: '毒舌指數 100%', avatar: '🐱', emoji: '🐱', description: '高冷刻薄，最討厭你吃高熱量垃圾食物！' },
+            { id: 'dog', name: '嘴賤小狗狗', title: '毒舌指數 90%', avatar: '🐶', emoji: '🐶', description: '活潑但嘴超賤，會用熱情的方式狠痛罵你。' },
+            { id: 'tiger', name: '暴躁小老虎', title: '毒舌指數 120%', avatar: '🐯', emoji: '🐯', description: '霸氣嚴厲，直接毫不留情狠狠訓斥！' },
+            { id: 'bunny', name: '腹黑小兔兔', title: '毒舌指數 95%', avatar: '🐰', emoji: '🐰', description: '外表可愛無辜，開口就是超酸重度挖苦。' }
+        ];
+
+        const { createApp, ref, computed, onMounted } = Vue;
+
+        createApp({
+            setup() {
+                // Navigation Tabs
+                const currentTab = ref('shopping');
+                const tabs = [
+                    { id: 'shopping', name: '協同購物', icon: 'fa-solid fa-cart-shopping' },
+                    { id: 'fridge', name: '雪櫃食材', icon: 'fa-solid fa-snowflake' },
+                    { id: 'diet', name: '飲食營養', icon: 'fa-solid fa-apple-whole' },
+                    { id: 'budget', name: '月度預算', icon: 'fa-solid fa-wallet' }
+                ];
+
+                // Global Household & App State
+                const householdId = ref('HOME88');
+                const tempHouseholdId = ref('HOME88');
+                const showSyncModal = ref(false);
+                const currentUserId = ref('');
+                const isSynced = ref(false);
+                const toastMessage = ref('');
+                const aiLoading = ref(false);
+
+                // Categories
+                const shoppingCategories = ['全部', '蔬菜水果', '肉類海鮮', '乳品蛋類', '零食飲料', '主食調味', '其他'];
+                const categoriesWithoutAll = ['蔬菜水果', '肉類海鮮', '乳品蛋類', '零食飲料', '主食調味', '其他'];
+
+                // Helper Date functions
+                const getTodayStr = () => new Date().toISOString().split('T')[0];
+                const getDefaultExpiryStr = (days = 7, startDateStr = null) => {
+                    const baseDate = startDateStr ? new Date(startDateStr) : new Date();
+                    baseDate.setDate(baseDate.getDate() + days);
+                    return baseDate.toISOString().split('T')[0];
+                };
+
+                const showToast = (msg) => {
+                    toastMessage.value = msg;
+                    setTimeout(() => {
+                        if (toastMessage.value === msg) toastMessage.value = '';
+                    }, 2800);
+                };
+
+                // State: Pet
+                const selectedPetId = ref('cat');
+                const tempSelectedPetId = ref('cat');
+                const showPetSelectModal = ref(false);
+                const showPetChatModal = ref(false);
+                const petMessage = ref('快上報你今天吃了什麼，本大人要看你有沒有偷吃！');
+                const isEating = ref(false);
+                const userChatInput = ref('');
+                const currentPetChatReply = ref('');
+
+                const currentPet = computed(() => {
+                    return PET_OPTIONS.find(p => p.id === selectedPetId.value) || PET_OPTIONS[0];
+                });
+
+                const triggerPetDialogue = (type = 'chat', customMsg = null) => {
+                    if (customMsg) {
+                        petMessage.value = customMsg;
+                        return;
+                    }
+                    const quotes = PET_QUOTES[type] || PET_QUOTES.chat;
+                    const randomQuote = quotes[Math.floor(Math.random() * quotes.length)];
+                    petMessage.value = randomQuote;
+                };
+
+                // State: Shopping
+                const selectedShoppingCategory = ref('全部');
+                const showAddShoppingModal = ref(false);
+                const shoppingList = ref([
+                    { id: 's1', name: '鮮牛奶', category: '乳品蛋類', qty: '1盒', estimatedPrice: 35, expiryDays: 7, bought: false, createdAt: Date.now() },
+                    { id: 's2', name: '梅花豬肉片', category: '肉類海鮮', qty: '1包', estimatedPrice: 40, expiryDays: 5, bought: false, createdAt: Date.now() }
+                ]);
+                const newShopping = ref({ name: '', category: '蔬菜水果', qty: '1份', estimatedPrice: null, expiryDays: 7 });
+
+                const filteredShoppingList = computed(() => {
+                    if (selectedShoppingCategory.value === '全部') return shoppingList.value;
+                    return shoppingList.value.filter(item => item.category === selectedShoppingCategory.value);
+                });
+
+                const addShoppingItem = () => {
+                    if (!newShopping.value.name.trim()) {
+                        showToast("請輸入採購項目名稱！");
+                        return;
+                    }
+                    const item = {
+                        id: 's_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+                        name: newShopping.value.name.trim(),
+                        category: newShopping.value.category || '蔬菜水果',
+                        qty: newShopping.value.qty || '1份',
+                        estimatedPrice: newShopping.value.estimatedPrice || null,
+                        expiryDays: newShopping.value.expiryDays || 7,
+                        bought: false,
+                        createdAt: Date.now()
+                    };
+                    shoppingList.value.unshift(item);
+                    syncDataToFirebase('shopping');
+                    showAddShoppingModal.value = false;
+                    newShopping.value = { name: '', category: '蔬菜水果', qty: '1份', estimatedPrice: null, expiryDays: 7 };
+                    showToast(`已加入採購項目「${item.name}」`);
+                };
+
+                const toggleShoppingBought = (item) => {
+                    item.bought = !item.bought;
+                    syncDataToFirebase('shopping');
+                };
+
+                const deleteShoppingItem = (id) => {
+                    shoppingList.value = shoppingList.value.filter(i => i.id !== id);
+                    syncDataToFirebase('shopping');
+                    showToast("已刪除採購項目");
+                };
+
+                const hasBoughtItems = computed(() => shoppingList.value.some(i => i.bought));
+                const boughtCount = computed(() => shoppingList.value.filter(i => i.bought).length);
+                const totalBoughtCost = computed(() => {
+                    return shoppingList.value
+                        .filter(i => i.bought)
+                        .reduce((sum, i) => sum + (Number(i.estimatedPrice) || 0), 0);
+                });
+
+                // State: Fridge
+                const showAddFridgeModal = ref(false);
+                const fridgeList = ref([
+                    { id: 'f1', name: '雞胸肉', category: '肉類海鮮', qty: '300g', purchaseDate: getTodayStr(), expiryDate: getDefaultExpiryStr(3), createdAt: Date.now() },
+                    { id: 'f2', name: '有機菠菜', category: '蔬菜水果', qty: '1把', purchaseDate: getTodayStr(), expiryDate: getDefaultExpiryStr(5), createdAt: Date.now() }
+                ]);
+                const newFridge = ref({
+                    name: '',
+                    category: '蔬菜水果',
+                    qty: '1份',
+                    purchaseDate: getTodayStr(),
+                    expiryDate: getDefaultExpiryStr(7),
+                    expiryDays: 7
+                });
+                const aiRecipe = ref(null);
+
+                const expiringItems = computed(() => {
+                    const today = new Date().setHours(0,0,0,0);
+                    return fridgeList.value.filter(item => {
+                        if (!item.expiryDate) return false;
+                        const diffDays = Math.ceil((new Date(item.expiryDate) - today) / (1000 * 60 * 60 * 24));
+                        return diffDays <= 3;
+                    });
+                });
+
+                const getDaysLeftText = (expiryDate) => {
+                    if (!expiryDate) return '';
+                    const diffDays = Math.ceil((new Date(expiryDate) - new Date().setHours(0,0,0,0)) / (1000 * 60 * 60 * 24));
+                    if (diffDays < 0) return `已過期 ${Math.abs(diffDays)} 天`;
+                    if (diffDays === 0) return '今天到期';
+                    return `剩 ${diffDays} 天`;
+                };
+
+                const getDaysLeftClass = (expiryDate) => {
+                    if (!expiryDate) return 'bg-slate-100 text-slate-600';
+                    const diffDays = Math.ceil((new Date(expiryDate) - new Date().setHours(0,0,0,0)) / (1000 * 60 * 60 * 24));
+                    if (diffDays <= 0) return 'bg-red-100 text-red-700 font-bold';
+                    if (diffDays <= 2) return 'bg-amber-100 text-amber-800 font-bold';
+                    return 'bg-emerald-100 text-emerald-800';
+                };
+
+                const openAddFridgeModal = () => {
+                    newFridge.value = {
+                        name: '',
+                        category: '蔬菜水果',
+                        qty: '1份',
+                        purchaseDate: getTodayStr(),
+                        expiryDate: getDefaultExpiryStr(7),
+                        expiryDays: 7
+                    };
+                    showAddFridgeModal.value = true;
+                };
+
+                const setPresetExpiryDays = (days) => {
+                    newFridge.value.expiryDays = days;
+                    newFridge.value.expiryDate = getDefaultExpiryStr(days, newFridge.value.purchaseDate);
+                };
+
+                const onExpiryDaysChange = () => {
+                    const days = Number(newFridge.value.expiryDays) > 0 ? Number(newFridge.value.expiryDays) : 7;
+                    newFridge.value.expiryDate = getDefaultExpiryStr(days, newFridge.value.purchaseDate);
+                };
+
+                const onPurchaseDateChange = () => {
+                    const days = Number(newFridge.value.expiryDays) > 0 ? Number(newFridge.value.expiryDays) : 7;
+                    newFridge.value.expiryDate = getDefaultExpiryStr(days, newFridge.value.purchaseDate);
+                };
+
+                const addFridgeItem = () => {
+                    if (!newFridge.value.name.trim()) {
+                        showToast("請輸入食材名稱！");
+                        return;
+                    }
+                    const item = {
+                        id: 'f_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+                        name: newFridge.value.name.trim(),
+                        category: newFridge.value.category || '蔬菜水果',
+                        qty: newFridge.value.qty || '1份',
+                        purchaseDate: newFridge.value.purchaseDate || getTodayStr(),
+                        expiryDate: newFridge.value.expiryDate || getDefaultExpiryStr(7),
+                        createdAt: Date.now()
+                    };
+
+                    fridgeList.value.unshift(item);
+                    syncDataToFirebase('fridge');
+                    showAddFridgeModal.value = false;
+                    showToast(`已成功新增食材「${item.name}」！`);
+                    triggerPetDialogue('low_cal', `買了 ${item.name}？記得在 ${item.expiryDate} 前吃完，放壞了我可要罵人！`);
+                };
+
+                const deleteFridgeItem = (id) => {
+                    fridgeList.value = fridgeList.value.filter(i => i.id !== id);
+                    syncDataToFirebase('fridge');
+                    showToast("已刪除食材");
+                };
+
+                const importBoughtToFridge = () => {
+                    const boughtItems = shoppingList.value.filter(i => i.bought);
+                    if (boughtItems.length === 0) return;
+
+                    let totalSyncedCost = 0;
+
+                    boughtItems.forEach(b => {
+                        const days = Number(b.expiryDays) > 0 ? Number(b.expiryDays) : 7;
+                        fridgeList.value.unshift({
+                            id: 'f_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+                            name: b.name,
+                            category: b.category,
+                            qty: b.qty,
+                            purchaseDate: getTodayStr(),
+                            expiryDate: getDefaultExpiryStr(days),
+                            createdAt: Date.now()
+                        });
+
+                        const cost = Number(b.estimatedPrice) || 0;
+                        if (cost > 0) {
+                            totalSyncedCost += cost;
+                            budgetTransactions.value.unshift({
+                                id: 't_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+                                title: `採購: ${b.name}`,
+                                amount: cost,
+                                category: '食材採購',
+                                date: getTodayStr(),
+                                source: 'shopping_sync'
+                            });
+                        }
+                    });
+
+                    shoppingList.value = shoppingList.value.filter(i => !i.bought);
+
+                    syncDataToFirebase('fridge');
+                    syncDataToFirebase('shopping');
+                    syncDataToFirebase('budget');
+
+                    showToast(`🚀 已將 ${boughtItems.length} 項食材匯入雪櫃，並同步開支 $${totalSyncedCost} 至月度預算！`);
+                    triggerPetDialogue('low_cal', `很好，買的 ${boughtItems.length} 項食材已轉進雪櫃，預算也記好了！`);
+                };
+
+                const getAiRecipeRecommendation = async () => {
+                    if (fridgeList.value.length === 0) {
+                        showToast("雪櫃裡面沒有食材，請先新增食材！");
+                        return;
+                    }
+                    aiLoading.value = true;
+                    setTimeout(() => {
+                        aiLoading.value = false;
+                        const topIngs = fridgeList.value.slice(0, 3).map(i => i.name);
+                        const mainIng = topIngs[0] || '食材';
+                        aiRecipe.value = {
+                            recipeName: `星級金牌家常炒${mainIng}`,
+                            description: `這是一道將雪櫃現有食材大火爆炒、營養均勻且香氣濃郁的快捷家常料理！`,
+                            ingredients: [
+                                ...topIngs.map(name => ({ name, inFridge: true })),
+                                { name: '蒜頭香蔥', inFridge: false },
+                                { name: '特級醬油', inFridge: false }
+                            ],
+                            missingIngredients: ['蒜頭香蔥', '特級醬油']
+                        };
+                        showToast(`✨ 為您推薦創意料理：${aiRecipe.value.recipeName}`);
+                        triggerPetDialogue('low_cal', `用雪櫃裡的 ${mainIng} 做料理，別浪費食物！`);
+                    }, 1000);
+                };
+
+                const addMissingToShoppingList = (missing) => {
+                    missing.forEach(name => {
+                        shoppingList.value.unshift({
+                            id: 's_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+                            name,
+                            category: '主食調味',
+                            qty: '1份',
+                            estimatedPrice: 15,
+                            expiryDays: 7,
+                            bought: false,
+                            createdAt: Date.now()
+                        });
+                    });
+                    syncDataToFirebase('shopping');
+                    showToast(`已將 ${missing.length} 項缺少食材一鍵加入購物清單！`);
+                };
+
+                // State: Diet
+                const showAddDietModal = ref(false);
+                const calorieTarget = ref(2000);
+                const dietLogs = ref([
+                    { id: 'd1', mealType: '早餐', foodName: '燕麥奶與水煮蛋', calories: 320, protein: 18, carbs: 35, fat: 10, cost: 45, date: getTodayStr() }
+                ]);
+                const newDiet = ref({ mealType: '午餐', foodName: '', calories: 450, protein: 25, carbs: 40, fat: 12, cost: null });
+
+                const todayDietLogs = computed(() => {
+                    const todayStr = getTodayStr();
+                    return dietLogs.value.filter(d => d.date === todayStr);
+                });
+
+                const totalTodayCalories = computed(() => {
+                    return todayDietLogs.value.reduce((sum, d) => sum + (Number(d.calories) || 0), 0);
+                });
+
+                const calorieProgress = computed(() => {
+                    return Math.round((totalTodayCalories.value / calorieTarget.value) * 100);
+                });
+
+                const todayMacros = computed(() => {
+                    return todayDietLogs.value.reduce((acc, d) => {
+                        acc.protein += Number(d.protein) || 0;
+                        acc.carbs += Number(d.carbs) || 0;
+                        acc.fat += Number(d.fat) || 0;
+                        return acc;
+                    }, { protein: 0, carbs: 0, fat: 0 });
+                });
+
+                const getMealIcon = (mealType) => {
+                    switch (mealType) {
+                        case '早餐': return '🍳';
+                        case '午餐': return '🍱';
+                        case '晚餐': return '🍽️';
+                        default: return '🍿';
+                    }
+                };
+
+                const autoEstimateNutrition = () => {
+                    if (!newDiet.value.foodName.trim()) {
+                        showToast("請先輸入食物名稱！");
+                        return;
+                    }
+                    aiLoading.value = true;
+                    setTimeout(() => {
+                        aiLoading.value = false;
+                        newDiet.value.calories = Math.floor(Math.random() * 300) + 300;
+                        newDiet.value.protein = Math.floor(Math.random() * 20) + 10;
+                        newDiet.value.carbs = Math.floor(Math.random() * 40) + 20;
+                        newDiet.value.fat = Math.floor(Math.random() * 15) + 5;
+                        showToast("✨ AI 已為您估算營養成分！");
+                    }, 800);
+                };
+
+                const addDietLog = () => {
+                    if (!newDiet.value.foodName.trim() || !newDiet.value.calories) {
+                        showToast("請填寫食物名稱與卡路里！");
+                        return;
+                    }
+
+                    const log = {
+                        id: 'd_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+                        mealType: newDiet.value.mealType,
+                        foodName: newDiet.value.foodName,
+                        calories: Number(newDiet.value.calories),
+                        protein: Number(newDiet.value.protein) || 0,
+                        carbs: Number(newDiet.value.carbs) || 0,
+                        fat: Number(newDiet.value.fat) || 0,
+                        cost: newDiet.value.cost ? Number(newDiet.value.cost) : null,
+                        date: getTodayStr()
+                    };
+
+                    dietLogs.value.unshift(log);
+
+                    if (log.cost && log.cost > 0) {
+                        budgetTransactions.value.unshift({
+                            id: 't_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+                            title: `膳食: ${log.foodName}`,
+                            amount: log.cost,
+                            category: '餐飲膳食',
+                            date: getTodayStr(),
+                            source: 'diet_sync'
+                        });
+                        syncDataToFirebase('budget');
+                    }
+
+                    syncDataToFirebase('diet');
+
+                    isEating.value = true;
+                    setTimeout(() => { isEating.value = false; }, 1600);
+
+                    const isHighCal = log.calories > 500;
+                    triggerPetDialogue(isHighCal ? 'high_cal' : 'low_cal');
+
+                    showAddDietModal.value = false;
+                    newDiet.value = { mealType: '午餐', foodName: '', calories: 450, protein: 25, carbs: 40, fat: 12, cost: null };
+                    showToast(`已記錄「${log.foodName}」，寵物已將其吃掉！`);
+                };
+
+                const deleteDietLog = (id) => {
+                    dietLogs.value = dietLogs.value.filter(d => d.id !== id);
+                    syncDataToFirebase('diet');
+                    showToast("已刪除飲食紀錄");
+                };
+
+                // State: Budget
+                const showEditBudgetModal = ref(false);
+                const showAddExpenseModal = ref(false);
+                const tempBudget = ref(5000);
+                const budgetConfig = ref({ totalBudget: 5000 });
+                const budgetTransactions = ref([
+                    { id: 't1', title: '全聯食材採購', amount: 350, category: '食材採購', date: getTodayStr(), source: 'manual' }
+                ]);
+                const newExpense = ref({ title: '', amount: null, category: '食材採購', date: getTodayStr() });
+
+                const filteredBudgetTransactions = computed(() => budgetTransactions.value);
+
+                const totalMonthlySpent = computed(() => {
+                    return budgetTransactions.value.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+                });
+
+                const overallBudgetProgress = computed(() => {
+                    if (!budgetConfig.value.totalBudget) return 0;
+                    return Math.round((totalMonthlySpent.value / budgetConfig.value.totalBudget) * 100);
+                });
+
+                const openEditBudgetModal = () => {
+                    tempBudget.value = budgetConfig.value.totalBudget;
+                    showEditBudgetModal.value = true;
+                };
+
+                const saveCustomBudget = () => {
+                    if (!tempBudget.value || tempBudget.value <= 0) {
+                        showToast("請輸入有效的預算金額！");
+                        return;
+                    }
+                    budgetConfig.value.totalBudget = Number(tempBudget.value);
+                    syncDataToFirebase('budget_config');
+                    showEditBudgetModal.value = false;
+                    showToast(`月度預算已更新為 $${budgetConfig.value.totalBudget}`);
+                };
+
+                const addExpenseTransaction = () => {
+                    if (!newExpense.value.title.trim() || !newExpense.value.amount) {
+                        showToast("請填寫項目名稱與開支金額！");
+                        return;
+                    }
+                    budgetTransactions.value.unshift({
+                        id: 't_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+                        title: newExpense.value.title.trim(),
+                        amount: Number(newExpense.value.amount),
+                        category: newExpense.value.category || '食材採購',
+                        date: newExpense.value.date || getTodayStr(),
+                        source: 'manual'
+                    });
+
+                    syncDataToFirebase('budget');
+                    showAddExpenseModal.value = false;
+                    newExpense.value = { title: '', amount: null, category: '食材採購', date: getTodayStr() };
+                    showToast("已成功新增預算開支明細！");
+                };
+
+                const deleteExpenseTransaction = (id) => {
+                    budgetTransactions.value = budgetTransactions.value.filter(t => t.id !== id);
+                    syncDataToFirebase('budget');
+                    showToast("已刪除開支紀錄");
+                };
+
+                const confirmPetSelection = () => {
+                    selectedPetId.value = tempSelectedPetId.value;
+                    showPetSelectModal.value = false;
+                    triggerPetDialogue('chat', `本大人正式上任！小傢伙，以後少吃點高熱量垃圾食物！`);
+                    showToast(`已成功切換為：${currentPet.value.name}`);
+                };
+
+                const handlePetClick = () => {
+                    triggerPetDialogue('chat');
+                    showPetChatModal.value = true;
+                };
+
+                const sendManualPetChat = () => {
+                    if (!userChatInput.value.trim()) return;
+                    const quotes = PET_QUOTES.chat;
+                    const reply = quotes[Math.floor(Math.random() * quotes.length)];
+                    currentPetChatReply.value = reply;
+                    petMessage.value = reply;
+                    userChatInput.value = '';
+                };
+
+                const updateHouseholdId = () => {
+                    if (!tempHouseholdId.value.trim()) return;
+                    householdId.value = tempHouseholdId.value.trim().toUpperCase();
+                    showSyncModal.value = false;
+                    showToast(`已切換至家庭群組：${householdId.value}`);
+                    initFirebaseRealtimeSync();
+                };
+
+                const copyHouseholdCode = () => {
+                    const el = document.createElement('textarea');
+                    el.value = householdId.value;
+                    document.body.appendChild(el);
+                    el.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(el);
+                    showToast("已複製家庭代碼！");
+                };
+
+                const copyUserId = () => {
+                    if (!currentUserId.value) return;
+                    const el = document.createElement('textarea');
+                    el.value = currentUserId.value;
+                    document.body.appendChild(el);
+                    el.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(el);
+                    showToast("已複製 User ID！");
+                };
+
+                const syncDataToFirebase = (target) => {
+                    if (!db || !auth || !auth.currentUser) {
+                        saveToLocalStorage();
+                        return;
+                    }
+                    try {
+                        const hId = householdId.value;
+                        if (target === 'shopping') {
+                            setDoc(doc(db, 'artifacts', appId, 'public', 'data', `pantry_${hId}`, 'data', 'shopping'), { items: shoppingList.value });
+                        } else if (target === 'fridge') {
+                            setDoc(doc(db, 'artifacts', appId, 'public', 'data', `pantry_${hId}`, 'data', 'fridge'), { items: fridgeList.value });
+                        } else if (target === 'budget') {
+                            setDoc(doc(db, 'artifacts', appId, 'public', 'data', `pantry_${hId}`, 'data', 'budget'), { items: budgetTransactions.value });
+                        } else if (target === 'budget_config') {
+                            setDoc(doc(db, 'artifacts', appId, 'public', 'data', `pantry_${hId}`, 'data', 'budget_config'), budgetConfig.value);
+                        } else if (target === 'diet') {
+                            setDoc(doc(db, 'artifacts', appId, 'public', 'data', `pantry_${hId}`, 'data', 'diet'), { items: dietLogs.value });
+                        }
+                        saveToLocalStorage();
+                    } catch (e) {
+                        console.warn("Firestore sync backup local", e);
+                        saveToLocalStorage();
+                    }
+                };
+
+                const saveToLocalStorage = () => {
+                    const data = {
+                        shopping: shoppingList.value,
+                        fridge: fridgeList.value,
+                        budget: budgetTransactions.value,
+                        budgetConfig: budgetConfig.value,
+                        diet: dietLogs.value,
+                        householdId: householdId.value,
+                        petId: selectedPetId.value
+                    };
+                    localStorage.setItem('smartpantry_local_store', JSON.stringify(data));
+                };
+
+                const loadFromLocalStorage = () => {
+                    const raw = localStorage.getItem('smartpantry_local_store');
+                    if (raw) {
+                        try {
+                            const data = JSON.parse(raw);
+                            if (data.shopping) shoppingList.value = data.shopping;
+                            if (data.fridge) fridgeList.value = data.fridge;
+                            if (data.budget) budgetTransactions.value = data.budget;
+                            if (data.budgetConfig) budgetConfig.value = data.budgetConfig;
+                            if (data.diet) dietLogs.value = data.diet;
+                            if (data.petId) selectedPetId.value = data.petId;
+                        } catch (e) {}
+                    }
+                };
+
+                const initFirebaseRealtimeSync = () => {
+                    if (!db || !auth || !auth.currentUser) return;
+                    const hId = householdId.value;
+
+                    onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', `pantry_${hId}`, 'data', 'shopping'), docSnap => {
+                        if (docSnap.exists() && docSnap.data().items) {
+                            shoppingList.value = docSnap.data().items;
+                        }
+                    }, err => console.debug("Sync info", err));
+
+                    onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', `pantry_${hId}`, 'data', 'fridge'), docSnap => {
+                        if (docSnap.exists() && docSnap.data().items) {
+                            fridgeList.value = docSnap.data().items;
+                        }
+                    }, err => console.debug("Sync info", err));
+
+                    onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', `pantry_${hId}`, 'data', 'budget'), docSnap => {
+                        if (docSnap.exists() && docSnap.data().items) {
+                            budgetTransactions.value = docSnap.data().items;
+                        }
+                    }, err => console.debug("Sync info", err));
+
+                    onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', `pantry_${hId}`, 'data', 'budget_config'), docSnap => {
+                        if (docSnap.exists()) {
+                            budgetConfig.value = docSnap.data();
+                        }
+                    }, err => console.debug("Sync info", err));
+
+                    isSynced.value = true;
+                };
+
+                onMounted(async () => {
+                    loadFromLocalStorage();
+
+                    if (auth) {
+                        try {
+                            if (initialAuthToken) {
+                                await signInWithCustomToken(auth, initialAuthToken);
+                            } else {
+                                await signInAnonymously(auth);
+                            }
+                        } catch (e) {
+                            console.warn("Auth initialization fallback", e);
+                        }
+
+                        onAuthStateChanged(auth, (user) => {
+                            if (user) {
+                                currentUserId.value = user.uid;
+                                initFirebaseRealtimeSync();
+                            }
+                        });
+                    }
+                });
+
+                return {
+                    currentTab,
+                    tabs,
+                    householdId,
+                    tempHouseholdId,
+                    showSyncModal,
+                    currentUserId,
+                    isSynced,
+                    toastMessage,
+                    aiLoading,
+                    shoppingCategories,
+                    categoriesWithoutAll,
+                    selectedShoppingCategory,
+                    showAddShoppingModal,
+                    shoppingList,
+                    newShopping,
+                    filteredShoppingList,
+                    addShoppingItem,
+                    toggleShoppingBought,
+                    deleteShoppingItem,
+                    hasBoughtItems,
+                    boughtCount,
+                    totalBoughtCost,
+                    importBoughtToFridge,
+                    showAddFridgeModal,
+                    fridgeList,
+                    newFridge,
+                    openAddFridgeModal,
+                    setPresetExpiryDays,
+                    onExpiryDaysChange,
+                    onPurchaseDateChange,
+                    addFridgeItem,
+                    deleteFridgeItem,
+                    getDaysLeftText,
+                    getDaysLeftClass,
+                    expiringItems,
+                    aiRecipe,
+                    getAiRecipeRecommendation,
+                    addMissingToShoppingList,
+                    showEditBudgetModal,
+                    openEditBudgetModal,
+                    saveCustomBudget,
+                    showAddExpenseModal,
+                    tempBudget,
+                    budgetConfig,
+                    budgetTransactions,
+                    filteredBudgetTransactions,
+                    newExpense,
+                    addExpenseTransaction,
+                    deleteExpenseTransaction,
+                    totalMonthlySpent,
+                    overallBudgetProgress,
+                    showAddDietModal,
+                    dietLogs,
+                    todayDietLogs,
+                    newDiet,
+                    calorieTarget,
+                    totalTodayCalories,
+                    calorieProgress,
+                    todayMacros,
+                    getMealIcon,
+                    autoEstimateNutrition,
+                    addDietLog,
+                    deleteDietLog,
+                    petOptions: PET_OPTIONS,
+                    selectedPetId,
+                    tempSelectedPetId,
+                    showPetSelectModal,
+                    showPetChatModal,
+                    petMessage,
+                    isEating,
+                    userChatInput,
+                    currentPetChatReply,
+                    currentPet,
+                    confirmPetSelection,
+                    handlePetClick,
+                    sendManualPetChat,
+                    updateHouseholdId,
+                    copyHouseholdCode,
+                    copyUserId
+                };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
