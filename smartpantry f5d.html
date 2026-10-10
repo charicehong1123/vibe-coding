@@ -1,0 +1,1712 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SmartPantry 智食家 - 智慧飲食與語音/圖像辨識管家</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Vue 3 -->
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Noto+Sans+TC:wght@400;500;700;900&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'Noto Sans TC', 'sans-serif'] },
+                    colors: {
+                        emerald: { 50: '#ecfdf5', 100: '#d1fae5', 500: '#10b981', 600: '#059669', 700: '#047857' },
+                        amber: { 400: '#fbbf24', 500: '#f59e0b', 600: '#d97706' }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        [v-cloak] { display: none; }
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+        @keyframes petFloat {
+            0%, 100% { transform: translateY(0px) rotate(0deg); }
+            50% { transform: translateY(-14px) rotate(3deg); }
+        }
+        @keyframes petIdleWiggle {
+            0%, 90%, 100% { transform: scale(1); }
+            95% { transform: scale(1.08) rotate(-4deg); }
+        }
+        @keyframes petEatAction {
+            0% { transform: scale(1) rotate(0deg); }
+            20% { transform: scale(1.3) rotate(-10deg) translateY(-10px); }
+            40% { transform: scale(1.1) rotate(10deg) translateY(5px); }
+            60% { transform: scale(1.25) rotate(-8deg); }
+            80% { transform: scale(1.1) rotate(5deg); }
+            100% { transform: scale(1) rotate(0deg); }
+        }
+        @keyframes bubblePop {
+            0% { opacity: 0; transform: scale(0.6) translateY(10px); }
+            100% { opacity: 1; transform: scale(1) translateY(0); }
+        }
+        @keyframes micPulse {
+            0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+            70% { box-shadow: 0 0 0 14px rgba(239, 68, 68, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+        }
+
+        .animate-pet-float { animation: petFloat 4s ease-in-out infinite, petIdleWiggle 6s ease-in-out infinite; }
+        .animate-pet-eat { animation: petEatAction 0.8s ease-in-out infinite; }
+        .animate-bubble { animation: bubblePop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
+        .mic-recording { animation: micPulse 1.5s infinite; }
+
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #f1f5f9; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 9999px; }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 antialiased font-sans min-h-screen pb-24 md:pb-6 selection:bg-emerald-200">
+    <div id="app" v-cloak class="max-w-md md:max-w-5xl mx-auto min-h-screen flex flex-col relative">
+        
+        <!-- FLOATING PET OVERLAY -->
+        <div class="fixed right-3 md:right-8 bottom-24 md:bottom-12 z-50 pointer-events-none flex flex-col items-end">
+            
+            <!-- Speech Bubble -->
+            <div v-if="petMessage" 
+                 class="pointer-events-auto mb-2 max-w-[220px] sm:max-w-[280px] bg-slate-900/95 backdrop-blur-md text-white text-xs sm:text-sm p-3.5 rounded-2xl rounded-br-none shadow-2xl border border-slate-700/80 animate-bubble relative text-left">
+                <div class="flex items-center justify-between mb-1 text-[10px] text-amber-400 font-bold border-b border-slate-800 pb-1">
+                    <span>{{ currentPet.name }} · {{ currentPet.title }}</span>
+                    <button @click="petMessage = ''" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+                </div>
+                <p class="leading-relaxed font-medium text-slate-100">{{ petMessage }}</p>
+                <div class="absolute -bottom-2 right-4 w-3 h-3 bg-slate-900 rotate-45 border-r border-b border-slate-700"></div>
+            </div>
+
+            <!-- Pet Interactive Avatar -->
+            <div @click="handlePetClick" 
+                 title="點擊跟寵物說話"
+                 class="pointer-events-auto cursor-pointer group relative flex flex-col items-center select-none transition-transform active:scale-90">
+                
+                <div v-if="isEating" class="absolute -top-6 text-xl animate-bounce z-10 font-bold text-amber-500 bg-white/90 px-2 py-0.5 rounded-full shadow border border-amber-200">
+                     Nom Nom 😋
+                </div>
+
+                <div :class="[isEating ? 'animate-pet-eat' : 'animate-pet-float']" 
+                     class="w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-gradient-to-b from-white/90 to-slate-100/80 shadow-2xl border-4 border-white flex items-center justify-center relative hover:scale-105 transition-transform backdrop-blur-sm">
+                    
+                    <div class="text-4xl sm:text-5xl transform transition group-hover:rotate-6">
+                        {{ currentPet.avatar }}
+                    </div>
+
+                    <span class="absolute bottom-1 right-1 w-4 h-4 bg-emerald-500 border-2 border-white rounded-full shadow-sm"></span>
+                </div>
+
+                <div class="mt-1 bg-slate-900/80 backdrop-blur-sm text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow flex items-center space-x-1">
+                    <span>{{ currentPet.emoji }} {{ currentPet.name }}</span>
+                    <i class="fa-solid fa-comment-dots text-amber-400 text-[9px]"></i>
+                </div>
+            </div>
+        </div>
+
+        <!-- Header Nav -->
+        <header class="bg-white/95 backdrop-blur-md border-b border-slate-200 sticky top-0 z-30 px-4 py-3 shadow-sm">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-2">
+                    <div class="w-10 h-10 rounded-xl bg-emerald-500 flex items-center justify-center text-white text-xl font-bold shadow-md shadow-emerald-200">
+                        <i class="fa-solid fa-utensils"></i>
+                    </div>
+                    <div>
+                        <h1 class="font-bold text-slate-800 text-lg leading-tight flex items-center space-x-1.5">
+                            <span>智食家 SmartPantry</span>
+                        </h1>
+                        <p class="text-[11px] text-slate-500">語音轉文字 (粵語/普通話) ‧ Firebase 雲端同步</p>
+                    </div>
+                </div>
+                
+                <div class="flex items-center space-x-2">
+                    <!-- Speech Lang Toggle -->
+                    <button @click="toggleSpeechLang" :title="'當前語音辨識：' + (speechLang === 'zh-HK' ? '廣東話 (粵語)' : '普通話 (Mandarin)')"
+                            class="px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold flex items-center space-x-1 transition shadow-sm">
+                        <i class="fa-solid fa-language text-emerald-600"></i>
+                        <span>{{ speechLang === 'zh-HK' ? '粵語' : '普通話' }}</span>
+                    </button>
+
+                    <button @click="showPetSelectModal = true" class="px-2.5 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 text-xs font-bold border border-amber-200 flex items-center space-x-1 transition shadow-sm">
+                        <span class="text-sm">{{ currentPet.avatar }}</span>
+                        <span class="hidden sm:inline">更換寵物</span>
+                    </button>
+
+                    <button @click="showSyncModal = true" class="px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium flex items-center space-x-1 transition" title="Firebase UID 與雲端同步設定">
+                        <i class="fa-solid fa-cloud text-emerald-600"></i>
+                        <span class="truncate max-w-[100px]">{{ userId ? userId.substring(0,6) + '...' : '連接中' }}</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Desktop Nav Tabs -->
+            <div class="hidden md:flex space-x-2 mt-3 pt-2 border-t border-slate-100">
+                <button v-for="tab in tabs" :key="tab.id" @click="currentTab = tab.id" 
+                    :class="currentTab === tab.id ? 'bg-emerald-50 text-emerald-700 font-bold border-emerald-500 shadow-sm' : 'text-slate-600 hover:bg-slate-50 border-transparent'"
+                    class="flex-1 py-2 px-3 rounded-xl border-b-2 text-sm text-center flex items-center justify-center space-x-2 transition">
+                    <i :class="tab.icon"></i>
+                    <span>{{ tab.name }}</span>
+                </button>
+            </div>
+        </header>
+
+        <!-- Toast Notification -->
+        <transition enter-active-class="transform transition ease-out duration-300" enter-from-class="translate-y-2 opacity-0" enter-to-class="translate-y-0 opacity-100" leave-active-class="transition ease-in duration-100" leave-from-class="opacity-100" leave-to-class="opacity-0">
+            <div v-if="toastMessage" class="fixed top-16 left-1/2 transform -translate-x-1/2 z-50 bg-slate-900 text-white text-xs md:text-sm px-4 py-2.5 rounded-full shadow-xl flex items-center space-x-2 border border-slate-700">
+                <i class="fa-solid fa-circle-check text-emerald-400"></i>
+                <span>{{ toastMessage }}</span>
+            </div>
+        </transition>
+
+        <!-- Main Content Body -->
+        <main class="flex-1 p-4 overflow-y-auto mb-16 md:mb-0">
+
+            <!-- 1. 協同購物清單 -->
+            <section v-if="currentTab === 'shopping'" class="space-y-4">
+                <div class="flex justify-between items-center">
+                    <div>
+                        <h2 class="text-xl font-black text-slate-800">🛒 協同購物清單</h2>
+                        <p class="text-xs text-slate-500">家庭成員實時共享 (支援語音輸入與 AI 拍照識別)</p>
+                    </div>
+                    <div class="flex space-x-2">
+                        <label class="bg-amber-500 hover:bg-amber-600 text-white text-xs md:text-sm px-3.5 py-2 rounded-xl shadow-sm flex items-center space-x-1 font-bold transition cursor-pointer">
+                            <i class="fa-solid fa-camera"></i>
+                            <span>AI 拍照加購物</span>
+                            <input type="file" accept="image/*" capture="environment" @change="handleShoppingImageUpload" class="hidden">
+                        </label>
+                        <button @click="showAddShoppingModal = true" class="bg-emerald-600 hover:bg-emerald-700 text-white text-sm px-3.5 py-2 rounded-xl shadow-sm flex items-center space-x-1 font-medium transition">
+                            <i class="fa-solid fa-plus"></i>
+                            <span>新增項目</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="flex space-x-2 overflow-x-auto hide-scrollbar py-1">
+                    <button v-for="cat in shoppingCategories" :key="cat" @click="selectedShoppingCategory = cat"
+                        :class="selectedShoppingCategory === cat ? 'bg-slate-800 text-white font-bold' : 'bg-white border border-slate-200 text-slate-600'"
+                        class="px-3.5 py-1.5 rounded-xl text-xs whitespace-nowrap font-medium transition">
+                        {{ cat }}
+                    </button>
+                </div>
+
+                <div class="bg-white rounded-2xl shadow-sm border border-slate-200 divide-y divide-slate-100">
+                    <div v-if="filteredShoppingList.length === 0" class="p-8 text-center text-slate-400 text-sm">
+                        <i class="fa-solid fa-basket-shopping text-4xl mb-2 text-slate-200"></i>
+                        <p>購物清單目前是空的，快來新增或用相機拍照識別採購單！</p>
+                    </div>
+
+                    <div v-for="item in filteredShoppingList" :key="item.id" 
+                        class="p-3.5 flex items-center justify-between hover:bg-slate-50/50 transition">
+                        <div class="flex items-center space-x-3 flex-1 min-w-0">
+                            <input type="checkbox" :checked="item.bought" @change="toggleShoppingBought(item)" 
+                                class="w-5 h-5 rounded text-emerald-600 focus:ring-emerald-500 border-slate-300 cursor-pointer">
+                            <div :class="{'line-through text-slate-400': item.bought}" class="truncate">
+                                <span class="font-bold text-slate-800">{{ item.name }}</span>
+                                <span class="text-xs text-slate-400 ml-2">x{{ item.qty }}</span>
+                                <span v-if="item.estimatedPrice" class="text-xs font-semibold text-emerald-600 ml-2">約 ${{ item.estimatedPrice }}</span>
+                                <div class="text-[10px] text-slate-400 flex items-center space-x-2 mt-0.5">
+                                    <span class="bg-slate-100 px-1.5 py-0.5 rounded text-slate-500 font-medium">{{ item.category }}</span>
+                                    <span>UID: {{ item.createdBy ? item.createdBy.substring(0,6) + '...' : '本地' }}</span>
+                                </div>
+                            </div>
+                        </div>
+                        <button @click="deleteShoppingItem(item.id)" class="text-slate-300 hover:text-red-500 p-2 transition">
+                            <i class="fa-solid fa-trash-can"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <div v-if="hasBoughtItems" class="bg-emerald-50/80 border border-emerald-200 rounded-2xl p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3 shadow-sm">
+                    <div class="flex items-center space-x-3">
+                        <div class="w-10 h-10 rounded-2xl bg-emerald-500 text-white flex items-center justify-center font-bold text-lg shadow-sm">
+                            <i class="fa-solid fa-file-import"></i>
+                        </div>
+                        <div>
+                            <p class="text-sm font-bold text-emerald-900">有 {{ boughtCount }} 項物品已採購完成</p>
+                            <p class="text-xs text-emerald-700">可將其一鍵自動轉入雪櫃食材，並同步寫入預算開支</p>
+                        </div>
+                    </div>
+                    <button @click="importBoughtToFridge" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs md:text-sm font-bold px-4 py-2.5 rounded-xl shadow transition text-center whitespace-nowrap flex items-center justify-center space-x-1">
+                        <span>🚀 一鍵匯入雪櫃 & 記帳 (${{ totalBoughtCost }})</span>
+                    </button>
+                </div>
+            </section>
+
+            <!-- 2. 雪櫃食材管家 -->
+            <section v-if="currentTab === 'fridge'" class="space-y-4">
+                <div class="flex justify-between items-center">
+                    <div>
+                        <h2 class="text-xl font-black text-slate-800">🧊 雪櫃食材管家</h2>
+                        <p class="text-xs text-slate-500">保質期監控與 AI 創意料理推薦 (支援拍照識別雪櫃食材)</p>
+                    </div>
+                    <div class="flex space-x-2">
+                        <label class="bg-amber-500 hover:bg-amber-600 text-white text-xs md:text-sm px-3.5 py-2 rounded-xl shadow-sm flex items-center space-x-1 font-bold transition cursor-pointer">
+                            <i class="fa-solid fa-camera"></i>
+                            <span>AI 拍照補貨</span>
+                            <input type="file" accept="image/*" capture="environment" @change="handleFridgeImageUpload" class="hidden">
+                        </label>
+                        <button @click="getAiRecipeRecommendation" :disabled="aiLoading" class="bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white text-xs md:text-sm px-3.5 py-2 rounded-xl shadow-sm flex items-center space-x-1 font-bold transition disabled:opacity-50">
+                            <i class="fa-solid fa-wand-magic-sparkles"></i>
+                            <span>{{ aiLoading ? '產生食譜中...' : '✨ AI 推薦食譜' }}</span>
+                        </button>
+                        <button @click="openAddFridgeModal" class="bg-emerald-600 hover:bg-emerald-700 text-white text-sm px-3 py-2 rounded-xl shadow-sm flex items-center space-x-1 font-medium transition">
+                            <i class="fa-solid fa-plus"></i>
+                            <span class="hidden sm:inline text-xs font-bold ml-1">新增</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div v-if="expiringItems.length > 0" class="bg-red-50 border border-red-200 rounded-2xl p-3.5 flex items-center space-x-3 text-red-800 text-xs shadow-sm">
+                    <i class="fa-solid fa-triangle-exclamation text-red-500 text-xl"></i>
+                    <div>
+                        <span class="font-bold">到期提醒：</span> 有 <span class="font-bold underline text-red-600">{{ expiringItems.length }}</span> 項食材即將到期或已過期，請儘快食用！
+                    </div>
+                </div>
+
+                <div v-if="fridgeList.length === 0" class="bg-white p-8 rounded-2xl border border-slate-200 text-center text-slate-400 text-sm">
+                    <i class="fa-solid fa-box-open text-4xl mb-2 text-slate-200"></i>
+                    <p>雪櫃裡空空如也，點擊相機拍照識別雪櫃或手動新增食材吧！</p>
+                </div>
+
+                <div v-else class="grid grid-cols-2 md:grid-cols-3 gap-3">
+                    <div v-for="item in fridgeList" :key="item.id" 
+                        class="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between relative hover:border-emerald-300 transition">
+                        <div class="flex justify-between items-start mb-2">
+                            <span class="text-[11px] font-bold px-2 py-0.5 rounded-full" :class="getDaysLeftClass(item.expiryDate)">
+                                {{ getDaysLeftText(item.expiryDate) }}
+                            </span>
+                            <button @click="deleteFridgeItem(item.id)" class="text-slate-300 hover:text-red-400 text-xs p-1">
+                                <i class="fa-solid fa-xmark"></i>
+                            </button>
+                        </div>
+
+                        <div>
+                            <h3 class="font-bold text-slate-800 text-sm truncate">{{ item.name }}</h3>
+                            <p class="text-xs text-slate-500">數量: {{ item.qty }}</p>
+                        </div>
+
+                        <div class="mt-3 pt-2 border-t border-slate-100 flex justify-between items-center text-[10px] text-slate-400">
+                            <div class="flex items-center space-x-1">
+                                <span>到期:</span>
+                                <input type="date" v-model="item.expiryDate" @change="saveToFirestore('fridge')" 
+                                       class="bg-slate-50 hover:bg-slate-100 text-slate-700 font-semibold px-1.5 py-0.5 rounded border border-slate-200 outline-none text-[10px] cursor-pointer transition">
+                            </div>
+                            <span class="bg-slate-100 px-1.5 py-0.5 rounded font-medium">{{ item.category }}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div v-if="aiRecipe" class="bg-amber-50/90 border border-amber-200 rounded-2xl p-4 space-y-3 shadow-md relative">
+                    <div class="flex justify-between items-center border-b border-amber-200 pb-2">
+                        <h3 class="font-bold text-amber-900 flex items-center space-x-1.5">
+                            <i class="fa-solid fa-utensils text-amber-600"></i>
+                            <span>AI 推薦料理：{{ aiRecipe.recipeName }}</span>
+                        </h3>
+                        <button @click="aiRecipe = null" class="text-amber-700 text-xs hover:underline font-bold">關閉</button>
+                    </div>
+                    <p class="text-xs text-amber-900 leading-relaxed">{{ aiRecipe.description }}</p>
+                    
+                    <div class="text-xs space-y-1">
+                        <p class="font-bold text-amber-900">需要食材：</p>
+                        <div class="flex flex-wrap gap-1.5">
+                            <span v-for="ing in aiRecipe.ingredients" :key="ing.name" 
+                                class="px-2 py-1 rounded-lg text-[11px] font-medium" 
+                                :class="ing.inFridge ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : 'bg-red-100 text-red-800 font-bold border border-red-200'">
+                                {{ ing.name }} {{ ing.inFridge ? '✓' : '(缺)' }}
+                            </span>
+                        </div>
+                    </div>
+
+                    <div v-if="aiRecipe.missingIngredients && aiRecipe.missingIngredients.length > 0" class="pt-2">
+                        <button @click="addMissingToShoppingList(aiRecipe.missingIngredients)" class="w-full bg-amber-600 hover:bg-amber-700 text-white text-xs py-2.5 rounded-xl font-bold shadow transition">
+                            🛒 將缺少的 {{ aiRecipe.missingIngredients.length }} 項食材一鍵加入購物清單
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 3. 飲食營養紀錄 (拍照 AI 識別) -->
+            <section v-if="currentTab === 'diet'" class="space-y-4">
+                <div class="flex justify-between items-center">
+                    <div>
+                        <h2 class="text-xl font-black text-slate-800">🥗 飲食營養紀錄</h2>
+                        <p class="text-xs text-slate-500">拍照 AI 識別餐點熱量與營養，寵物隨機品嚐並毒舌評價！</p>
+                    </div>
+                    <button @click="openAddDietModal" class="bg-emerald-600 hover:bg-emerald-700 text-white text-sm px-3.5 py-2 rounded-xl shadow-sm flex items-center space-x-1 font-medium transition">
+                        <i class="fa-solid fa-camera"></i>
+                        <span>拍照記錄餐點</span>
+                    </button>
+                </div>
+
+                <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                    <div class="flex justify-between items-end">
+                        <div>
+                            <p class="text-xs text-slate-400 font-medium">今日總攝取熱量</p>
+                            <p class="text-2xl font-black text-slate-800">
+                                {{ totalTodayCalories }} <span class="text-xs font-normal text-slate-500">/ {{ calorieTarget }} kcal</span>
+                            </p>
+                        </div>
+                        <div class="text-right">
+                            <span class="text-xs font-bold px-2.5 py-1 rounded-full" :class="calorieProgress <= 100 ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'">
+                                {{ calorieProgress }}% 目標
+                            </span>
+                        </div>
+                    </div>
+
+                    <div class="w-full bg-slate-100 h-3 rounded-full overflow-hidden">
+                        <div class="bg-emerald-500 h-full rounded-full transition-all duration-500" :style="{ width: Math.min(calorieProgress, 100) + '%' }"></div>
+                    </div>
+
+                    <div class="grid grid-cols-3 gap-2 pt-2 border-t border-slate-100 text-center text-xs">
+                        <div class="bg-slate-50 p-2 rounded-xl">
+                            <p class="text-slate-400 text-[10px]">蛋白質</p>
+                            <p class="font-bold text-slate-700">{{ todayMacros.protein }}g</p>
+                        </div>
+                        <div class="bg-slate-50 p-2 rounded-xl">
+                            <p class="text-slate-400 text-[10px]">碳水化合物</p>
+                            <p class="font-bold text-slate-700">{{ todayMacros.carbs }}g</p>
+                        </div>
+                        <div class="bg-slate-50 p-2 rounded-xl">
+                            <p class="text-slate-400 text-[10px]">脂肪</p>
+                            <p class="font-bold text-slate-700">{{ todayMacros.fat }}g</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="space-y-2">
+                    <h3 class="text-sm font-bold text-slate-700">今日餐點紀錄</h3>
+                    <div v-if="todayDietLogs.length === 0" class="bg-white p-6 rounded-2xl text-center text-slate-400 text-xs border border-slate-200">
+                        今日尚無飲食紀錄，點擊右上角「拍照記錄餐點」讓 AI 幫你辨識！
+                    </div>
+
+                    <div v-for="log in todayDietLogs" :key="log.id" 
+                        class="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
+                        <div class="flex items-center space-x-3">
+                            <div class="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold text-sm overflow-hidden flex-shrink-0">
+                                <img v-if="log.imageUrl" :src="log.imageUrl" class="w-full h-full object-cover">
+                                <span v-else>{{ getMealIcon(log.mealType) }}</span>
+                            </div>
+                            <div>
+                                <h4 class="font-bold text-slate-800 text-sm">{{ log.foodName }}</h4>
+                                <p class="text-[11px] text-slate-400">
+                                    {{ log.mealType }} ‧ 蛋 {{ log.protein }}g | 碳 {{ log.carbs }}g | 脂 {{ log.fat }}g
+                                </p>
+                            </div>
+                        </div>
+                        <div class="flex items-center space-x-3">
+                            <div class="text-right">
+                                <span class="font-black text-slate-800 text-sm">{{ log.calories }} kcal</span>
+                                <p v-if="log.cost" class="text-[10px] text-emerald-600 font-bold">${{ log.cost }}</p>
+                            </div>
+                            <button @click="deleteDietLog(log.id)" class="text-slate-300 hover:text-red-400 p-1">
+                                <i class="fa-solid fa-trash-can text-xs"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 4. 月度預算規劃 -->
+            <section v-if="currentTab === 'budget'" class="space-y-4">
+                <div class="flex justify-between items-center">
+                    <div>
+                        <h2 class="text-xl font-black text-slate-800">💰 月度預算規劃</h2>
+                        <p class="text-xs text-slate-500">消費上限管理，自動同步採購與膳食開支</p>
+                    </div>
+                    <div class="flex space-x-2">
+                        <button @click="openEditBudgetModal" class="bg-slate-800 hover:bg-slate-900 text-white text-xs md:text-sm px-3.5 py-2 rounded-xl shadow-sm flex items-center space-x-1 font-bold transition">
+                            <i class="fa-solid fa-pen-to-square"></i>
+                            <span>設定預算</span>
+                        </button>
+                        <button @click="showAddExpenseModal = true" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs md:text-sm px-3.5 py-2 rounded-xl shadow-sm flex items-center space-x-1 font-bold transition">
+                            <i class="fa-solid fa-plus"></i>
+                            <span>手動記帳</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="bg-slate-900 text-white p-5 rounded-2xl shadow-md space-y-4 relative overflow-hidden">
+                    <div class="flex justify-between items-start relative z-10">
+                        <div>
+                            <p class="text-xs text-slate-400">本月總支出</p>
+                            <h3 class="text-3xl font-black">${{ totalMonthlySpent }}</h3>
+                        </div>
+                        <div class="text-right">
+                            <p class="text-xs text-slate-400">自定義預算上限</p>
+                            <p class="text-xl font-extrabold text-amber-400">${{ budgetConfig.totalBudget }}</p>
+                        </div>
+                    </div>
+
+                    <div class="space-y-1 relative z-10">
+                        <div class="w-full bg-slate-800 h-3 rounded-full overflow-hidden">
+                            <div class="h-full rounded-full transition-all duration-500" 
+                                :class="overallBudgetProgress >= 100 ? 'bg-red-500' : overallBudgetProgress >= 80 ? 'bg-amber-400' : 'bg-emerald-400'"
+                                :style="{ width: Math.min(overallBudgetProgress, 100) + '%' }"></div>
+                        </div>
+                        <div class="flex justify-between text-[11px] text-slate-400">
+                            <span>預算使用率 {{ overallBudgetProgress }}%</span>
+                            <span>剩餘可支用: ${{ Math.max(0, budgetConfig.totalBudget - totalMonthlySpent) }}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 space-y-3">
+                    <div class="flex justify-between items-center">
+                        <h3 class="font-bold text-slate-800 text-sm">本月開支明細</h3>
+                        <span class="text-xs text-slate-400">共 {{ filteredBudgetTransactions.length }} 筆筆數</span>
+                    </div>
+                    <div v-if="filteredBudgetTransactions.length === 0" class="text-center py-6 text-slate-400 text-xs">
+                        本月尚無消費紀錄，可以嘗試手動記帳或從購物清單「一鍵匯入雪櫃 & 記帳」！
+                    </div>
+                    <div class="divide-y divide-slate-100">
+                        <div v-for="t in filteredBudgetTransactions" :key="t.id" class="py-2.5 flex justify-between items-center text-xs">
+                            <div>
+                                <p class="font-bold text-slate-800">{{ t.title }}</p>
+                                <p class="text-[10px] text-slate-400">{{ t.date }} ‧ {{ t.category }}</p>
+                            </div>
+                            <div class="flex items-center space-x-2">
+                                <span class="font-bold text-slate-800 text-sm">-${{ t.amount }}</span>
+                                <button @click="deleteExpenseTransaction(t.id)" class="text-slate-300 hover:text-red-400 p-1">
+                                    <i class="fa-solid fa-xmark"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- Bottom Mobile Tab Bar -->
+        <nav class="md:hidden fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-slate-200 z-40 px-2 py-2 flex justify-around">
+            <button v-for="tab in tabs" :key="tab.id" @click="currentTab = tab.id"
+                    :class="currentTab === tab.id ? 'text-emerald-600 bg-emerald-50 font-bold' : 'text-slate-500 hover:text-slate-800'"
+                    class="flex flex-col items-center py-1 px-3 rounded-xl transition text-[11px]">
+                <i :class="tab.icon + ' text-base mb-0.5'"></i>
+                <span>{{ tab.name }}</span>
+            </button>
+        </nav>
+
+        <!-- MODAL 0: Firebase UID & 雲端同步設定 -->
+        <div v-if="showSyncModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-50 flex items-center justify-center p-4">
+            <div class="bg-white rounded-3xl w-full max-w-md p-6 space-y-4 shadow-2xl relative">
+                <div class="flex justify-between items-center border-b border-slate-100 pb-3">
+                    <h3 class="font-bold text-slate-800 text-base flex items-center space-x-2">
+                        <i class="fa-solid fa-cloud text-emerald-600"></i>
+                        <span>Firebase 雲端與 UID 設定</span>
+                    </h3>
+                    <button @click="showSyncModal = false" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-lg"></i></button>
+                </div>
+
+                <div class="space-y-3 text-xs">
+                    <div class="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 space-y-1.5">
+                        <p class="text-slate-400 text-[10px]">當前登入用戶 Firebase UID：</p>
+                        <div class="flex items-center justify-between">
+                            <span class="font-mono font-bold text-slate-800 text-xs break-all">{{ userId || '載入中...' }}</span>
+                            <button @click="copyUserId" class="px-2 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-800 font-bold rounded-lg text-[10px] transition">
+                                複製 UID
+                            </button>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-slate-600 font-bold mb-1">家庭群組 ID (共同協同同步)</label>
+                        <input type="text" v-model="householdId" @change="saveHouseholdId" class="w-full p-2.5 rounded-xl border border-slate-200 outline-none font-semibold text-emerald-600">
+                        <p class="text-[10px] text-slate-400 mt-1">相同家庭群組 ID 的成員將可實時同步購物清單與雪櫃食材。</p>
+                    </div>
+
+                    <div class="bg-emerald-50 border border-emerald-200 p-3.5 rounded-2xl text-emerald-800 leading-relaxed">
+                        <p class="font-bold mb-1">✨ 語音轉文字與 Firebase 雲端同步說明：</p>
+                        <p class="text-[11px]">點擊任何輸入框旁的咪高峰圖標即可直接使用語音識別轉成文字 (支援廣東話與普通話切換)。所有資料自動透過 Firebase 實時同步！</p>
+                    </div>
+                </div>
+
+                <div class="pt-2">
+                    <button @click="showSyncModal = false" class="w-full py-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs transition">
+                        儲存並關閉
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- MODAL 1: 寵物形象選擇彈窗 -->
+        <div v-if="showPetSelectModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-50 flex items-center justify-center p-4">
+            <div class="bg-white rounded-3xl w-full max-w-md p-6 space-y-5 shadow-2xl relative overflow-hidden">
+                <div class="text-center space-y-1">
+                    <span class="px-3 py-1 bg-amber-100 text-amber-800 text-xs font-bold rounded-full">專屬精靈夥伴</span>
+                    <h3 class="text-2xl font-black text-slate-800 mt-1">選擇你的刻薄小精靈 🐾</h3>
+                    <p class="text-xs text-slate-500">此精靈將常駐畫面，隨時毒舌吐槽你的飲食習慣！</p>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div v-for="pet in petOptions" :key="pet.id"
+                         @click="tempSelectedPetId = pet.id"
+                         :class="tempSelectedPetId === pet.id ? 'border-amber-500 bg-amber-50/60 ring-2 ring-amber-400' : 'border-slate-200 bg-slate-50 hover:bg-slate-100'"
+                         class="p-4 rounded-2xl border-2 cursor-pointer transition flex flex-col items-center text-center space-y-2 relative">
+                        
+                        <span v-if="tempSelectedPetId === pet.id" class="absolute top-2 right-2 text-amber-500 text-sm">
+                            <i class="fa-solid fa-circle-check"></i>
+                        </span>
+
+                        <div class="text-4xl transform hover:scale-110 transition">{{ pet.avatar }}</div>
+                        <div>
+                            <h4 class="font-bold text-slate-800 text-sm">{{ pet.name }}</h4>
+                            <p class="text-[10px] text-amber-600 font-bold mt-0.5">{{ pet.title }}</p>
+                        </div>
+                        <p class="text-[10px] text-slate-400 leading-tight">{{ pet.description }}</p>
+                    </div>
+                </div>
+
+                <div class="pt-2 flex space-x-2">
+                    <button v-if="selectedPetId" @click="showPetSelectModal = false" class="flex-1 py-3 rounded-xl bg-slate-100 text-slate-600 text-xs font-bold">
+                        取消
+                    </button>
+                    <button @click="confirmPetSelection" class="flex-1 py-3 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white text-xs font-bold shadow-lg transition">
+                        確認選定寵物
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- MODAL 2: 寵物手動對話 Modal (支援語音轉文字) -->
+        <div v-if="showPetChatModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div class="bg-white rounded-3xl w-full max-w-sm p-5 space-y-4 shadow-2xl border border-slate-100">
+                <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+                    <div class="flex items-center space-x-2">
+                        <span class="text-3xl">{{ currentPet.avatar }}</span>
+                        <div>
+                            <h3 class="font-bold text-slate-800 text-sm">{{ currentPet.name }}</h3>
+                            <p class="text-[10px] text-amber-600 font-semibold">{{ currentPet.title }}</p>
+                        </div>
+                    </div>
+                    <button @click="showPetChatModal = false" class="text-slate-400 hover:text-slate-600">
+                        <i class="fa-solid fa-xmark text-lg"></i>
+                    </button>
+                </div>
+
+                <div class="bg-slate-900 text-white p-4 rounded-2xl space-y-1 relative">
+                    <p class="text-[10px] text-amber-400 font-bold"><i class="fa-solid fa-quote-left mr-1"></i>寵物即時回覆：</p>
+                    <p class="text-xs sm:text-sm font-medium leading-relaxed">{{ currentPetChatReply || '找我有何貴幹？別想叫我誇你！' }}</p>
+                </div>
+
+                <div class="space-y-2">
+                    <div class="flex justify-between items-center">
+                        <label class="block text-xs font-bold text-slate-600">想跟 {{ currentPet.name }} 說什麼？</label>
+                        <span class="text-[10px] text-emerald-600 font-medium" v-if="isListening">🎙️ 語音轉文字中 ({{ speechLang === 'zh-HK' ? '粵語' : '普通話' }})... 請說話</span>
+                    </div>
+                    <div class="flex space-x-2">
+                        <input type="text" v-model="userChatInput" @keyup.enter="sendManualPetChat" placeholder="點擊右側咪高峰直接語音輸入..." 
+                               class="flex-1 p-2.5 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-amber-500 outline-none">
+                        <button @click="toggleSpeechRecognition('userChatInput')" :class="isListening && activeInputKey === 'userChatInput' ? 'bg-red-500 text-white mic-recording' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'"
+                                class="px-3 rounded-xl text-xs font-bold transition flex items-center justify-center" :title="'語音轉文字 (' + (speechLang === 'zh-HK' ? '粵語' : '普通話') + ')'">
+                            <i class="fa-solid fa-microphone"></i>
+                        </button>
+                        <button @click="sendManualPetChat" class="px-3 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-bold transition">
+                            傳送
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal: Add Shopping Item -->
+        <div v-if="showAddShoppingModal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div class="bg-white rounded-2xl w-full max-w-sm p-5 space-y-4 shadow-xl">
+                <h3 class="font-bold text-slate-800">新增購物項目</h3>
+                <div class="space-y-3 text-xs">
+                    <div>
+                        <div class="flex justify-between items-center mb-1">
+                            <label class="block text-slate-600 font-bold">食材/品名 <span class="text-red-500">*</span></label>
+                            <span class="text-[10px] text-emerald-600" v-if="isListening && activeInputKey === 'newShoppingName'">🎙️ 語音辨識中...</span>
+                        </div>
+                        <div class="flex space-x-2">
+                            <input type="text" v-model="newShopping.name" placeholder="例如: 豬肉 / 珍珠奶茶" class="flex-1 p-2.5 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-emerald-500">
+                            <button @click="toggleSpeechRecognition('newShoppingName')" :class="isListening && activeInputKey === 'newShoppingName' ? 'bg-red-500 text-white mic-recording' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'"
+                                    class="px-3 rounded-xl text-xs font-bold transition" title="語音輸入">
+                                <i class="fa-solid fa-microphone"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <label class="block text-slate-600 mb-1">分類</label>
+                            <select v-model="newShopping.category" class="w-full p-2.5 rounded-xl border border-slate-200 outline-none">
+                                <option v-for="c in categoriesWithoutAll" :key="c" :value="c">{{ c }}</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-slate-600 mb-1">數量</label>
+                            <input type="text" v-model="newShopping.qty" placeholder="如 1盒 / 500g" class="w-full p-2.5 rounded-xl border border-slate-200 outline-none">
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <label class="block text-slate-600 mb-1">預估金額 ($)</label>
+                            <input type="number" v-model.number="newShopping.estimatedPrice" placeholder="例如 40" class="w-full p-2.5 rounded-xl border border-slate-200 outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-slate-600 mb-1">保質期 (天，預設7)</label>
+                            <input type="number" v-model.number="newShopping.expiryDays" placeholder="7" min="1" class="w-full p-2.5 rounded-xl border border-slate-200 outline-none font-semibold text-emerald-600">
+                        </div>
+                    </div>
+                </div>
+                <div class="flex space-x-2 pt-2">
+                    <button @click="showAddShoppingModal = false" class="flex-1 py-2 rounded-xl bg-slate-100 text-slate-600 text-xs font-semibold">取消</button>
+                    <button @click="addShoppingItem" class="flex-1 py-2 rounded-xl bg-emerald-600 text-white text-xs font-semibold shadow">新增至清單</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal: Add Fridge Item -->
+        <div v-if="showAddFridgeModal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div class="bg-white rounded-2xl w-full max-w-sm p-5 space-y-4 shadow-xl">
+                <div class="flex justify-between items-center">
+                    <h3 class="font-bold text-slate-800">新增雪櫃食材</h3>
+                    <button @click="showAddFridgeModal = false" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark"></i></button>
+                </div>
+
+                <div class="space-y-3 text-xs">
+                    <div>
+                        <div class="flex justify-between items-center mb-1">
+                            <label class="block text-slate-600 font-bold">食材名稱 <span class="text-red-500">*</span></label>
+                            <span class="text-[10px] text-emerald-600" v-if="isListening && activeInputKey === 'newFridgeName'">🎙️ 語音辨識中...</span>
+                        </div>
+                        <div class="flex space-x-2">
+                            <input type="text" v-model="newFridge.name" placeholder="例如: 雞胸肉 / 鮮奶" class="flex-1 p-2.5 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-emerald-500">
+                            <button @click="toggleSpeechRecognition('newFridgeName')" :class="isListening && activeInputKey === 'newFridgeName' ? 'bg-red-500 text-white mic-recording' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'"
+                                    class="px-3 rounded-xl text-xs font-bold transition" title="語音輸入">
+                                <i class="fa-solid fa-microphone"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <label class="block text-slate-600 mb-1">分類</label>
+                            <select v-model="newFridge.category" class="w-full p-2.5 rounded-xl border border-slate-200 outline-none">
+                                <option v-for="c in categoriesWithoutAll" :key="c" :value="c">{{ c }}</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-slate-600 mb-1">數量</label>
+                            <input type="text" v-model="newFridge.qty" placeholder="如 200g" class="w-full p-2.5 rounded-xl border border-slate-200 outline-none">
+                        </div>
+                    </div>
+
+                    <div>
+                        <div class="flex justify-between items-center mb-1">
+                            <label class="block text-slate-600 font-medium">保質期 (可自定義天數)</label>
+                            <div class="flex items-center space-x-1 text-slate-500">
+                                <input type="number" v-model.number="newFridge.expiryDays" @input="onExpiryDaysChange" min="1" max="365" placeholder="7"
+                                       class="w-16 p-1 text-center font-bold text-emerald-600 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-emerald-500">
+                                <span class="text-[11px] font-semibold">天</span>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-4 gap-1.5 mb-2">
+                            <button v-for="days in [3, 7, 14, 30]" :key="days" 
+                                    @click="setPresetExpiryDays(days)"
+                                    :class="newFridge.expiryDays === days ? 'bg-emerald-600 text-white font-bold' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'"
+                                    class="py-1.5 rounded-lg text-xs transition">
+                                {{ days }} 天
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <label class="block text-slate-600 mb-1">購入日期</label>
+                            <input type="date" v-model="newFridge.purchaseDate" @change="onPurchaseDateChange" class="w-full p-2 rounded-xl border border-slate-200 outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-slate-600 mb-1">到期日</label>
+                            <input type="date" v-model="newFridge.expiryDate" class="w-full p-2 rounded-xl border border-slate-200 outline-none font-semibold text-slate-700">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex space-x-2 pt-2">
+                    <button @click="showAddFridgeModal = false" class="flex-1 py-2 rounded-xl bg-slate-100 text-slate-600 text-xs font-semibold">取消</button>
+                    <button @click="addFridgeItem" class="flex-1 py-2 rounded-xl bg-emerald-600 text-white text-xs font-semibold shadow">儲存食材</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal: Add Diet Log with AI Image Recognition -->
+        <div v-if="showAddDietModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div class="bg-white rounded-3xl w-full max-w-md p-5 space-y-4 shadow-2xl max-h-[90vh] overflow-y-auto">
+                <div class="flex justify-between items-center border-b border-slate-100 pb-3">
+                    <h3 class="font-bold text-slate-800 text-base flex items-center space-x-1.5">
+                        <i class="fa-solid fa-camera-retro text-emerald-600"></i>
+                        <span>記錄餐點 (AI 圖像自動識別)</span>
+                    </h3>
+                    <button @click="showAddDietModal = false" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-lg"></i></button>
+                </div>
+
+                <!-- AI Photo Capture / Upload Area -->
+                <div class="space-y-2">
+                    <label class="block text-xs font-bold text-slate-700">📸 拍照 / 上傳食物照片讓 AI 識別：</label>
+                    
+                    <div class="border-2 border-dashed border-slate-200 rounded-2xl p-4 text-center hover:border-emerald-400 transition bg-slate-50 relative overflow-hidden">
+                        <input type="file" accept="image/*" capture="environment" @change="handleDietImageUpload" class="absolute inset-0 opacity-0 cursor-pointer z-10" title="點擊拍照或上傳圖片">
+                        
+                        <div v-if="aiImagePreview" class="relative z-0 flex flex-col items-center space-y-2">
+                            <img :src="aiImagePreview" class="w-32 h-32 object-cover rounded-xl shadow-md border-2 border-emerald-500">
+                            <span class="text-[11px] text-emerald-700 font-bold">圖片已就緒，點擊可更換</span>
+                        </div>
+                        <div v-else class="flex flex-col items-center space-y-1.5 py-3">
+                            <div class="w-12 h-12 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center text-xl shadow-sm">
+                                <i class="fa-solid fa-camera"></i>
+                            </div>
+                            <p class="text-xs font-bold text-slate-700">點擊拍照或上傳餐點照片</p>
+                            <p class="text-[10px] text-slate-400">AI 將自動識別食物名稱、熱量與營養成分</p>
+                        </div>
+                    </div>
+
+                    <!-- AI Analyzing Indicator -->
+                    <div v-if="aiAnalyzing" class="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-center text-emerald-800 text-xs font-bold flex items-center justify-center space-x-2 animate-pulse">
+                        <i class="fa-solid fa-spinner fa-spin"></i>
+                        <span>AI 正在強力掃描並分析你的餐點中...</span>
+                    </div>
+                </div>
+
+                <div class="space-y-3 text-xs pt-2">
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <label class="block text-slate-600 mb-1 font-bold">餐點類型</label>
+                            <select v-model="newDiet.mealType" class="w-full p-2.5 rounded-xl border border-slate-200 outline-none">
+                                <option>早餐</option>
+                                <option>午餐</option>
+                                <option>晚餐</option>
+                                <option>點心/宵夜</option>
+                            </select>
+                        </div>
+                        <div>
+                            <div class="flex justify-between items-center mb-1">
+                                <label class="block text-slate-600 font-bold">食物名稱</label>
+                                <span class="text-[10px] text-emerald-600" v-if="isListening && activeInputKey === 'newDietFoodName'">🎙️ 語音辨識中...</span>
+                            </div>
+                            <div class="flex space-x-1">
+                                <input type="text" v-model="newDiet.foodName" placeholder="例如: 叉燒飯" class="flex-1 p-2 rounded-xl border border-slate-200 outline-none">
+                                <button @click="toggleSpeechRecognition('newDietFoodName')" :class="isListening && activeInputKey === 'newDietFoodName' ? 'bg-red-500 text-white mic-recording' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'"
+                                        class="px-2 rounded-xl text-xs font-bold transition" title="語音輸入">
+                                    <i class="fa-solid fa-microphone"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <label class="block text-slate-600 mb-1 font-bold">熱量 (kcal)</label>
+                            <input type="number" v-model.number="newDiet.calories" placeholder="500" class="w-full p-2.5 rounded-xl border border-slate-200 outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-slate-600 mb-1 font-bold">花費 ($)</label>
+                            <input type="number" v-model.number="newDiet.cost" placeholder="45" class="w-full p-2.5 rounded-xl border border-slate-200 outline-none">
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-3 gap-2">
+                        <div>
+                            <label class="block text-slate-600 mb-1">蛋白質 (g)</label>
+                            <input type="number" v-model.number="newDiet.protein" placeholder="25" class="w-full p-2.5 rounded-xl border border-slate-200 outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-slate-600 mb-1">碳水 (g)</label>
+                            <input type="number" v-model.number="newDiet.carbs" placeholder="60" class="w-full p-2.5 rounded-xl border border-slate-200 outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-slate-600 mb-1">脂肪 (g)</label>
+                            <input type="number" v-model.number="newDiet.fat" placeholder="15" class="w-full p-2.5 rounded-xl border border-slate-200 outline-none">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex space-x-2 pt-2">
+                    <button @click="showAddDietModal = false" class="flex-1 py-3 rounded-xl bg-slate-100 text-slate-600 font-bold">取消</button>
+                    <button @click="addDietLog" class="flex-1 py-3 rounded-xl bg-emerald-600 text-white font-bold shadow">確認新增紀錄</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal: Add Expense / Edit Budget -->
+        <div v-if="showAddExpenseModal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div class="bg-white rounded-2xl w-full max-w-sm p-5 space-y-4 shadow-xl">
+                <h3 class="font-bold text-slate-800">手動新增支出開支</h3>
+                <div class="space-y-3 text-xs">
+                    <div>
+                        <div class="flex justify-between items-center mb-1">
+                            <label class="block text-slate-600 font-bold">項目名稱</label>
+                            <span class="text-[10px] text-emerald-600" v-if="isListening && activeInputKey === 'newExpenseTitle'">🎙️ 語音辨識中...</span>
+                        </div>
+                        <div class="flex space-x-2">
+                            <input type="text" v-model="newExpense.title" placeholder="例如: 超市買菜" class="flex-1 p-2.5 rounded-xl border border-slate-200 outline-none">
+                            <button @click="toggleSpeechRecognition('newExpenseTitle')" :class="isListening && activeInputKey === 'newExpenseTitle' ? 'bg-red-500 text-white mic-recording' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'"
+                                    class="px-3 rounded-xl text-xs font-bold transition" title="語音輸入">
+                                <i class="fa-solid fa-microphone"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <label class="block text-slate-600 mb-1 font-bold">金額 ($)</label>
+                            <input type="number" v-model.number="newExpense.amount" placeholder="150" class="w-full p-2.5 rounded-xl border border-slate-200 outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-slate-600 mb-1 font-bold">分類</label>
+                            <select v-model="newExpense.category" class="w-full p-2.5 rounded-xl border border-slate-200 outline-none">
+                                <option>食材採購</option>
+                                <option>外食餐飲</option>
+                                <option>生活雜物</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                <div class="flex space-x-2 pt-2">
+                    <button @click="showAddExpenseModal = false" class="flex-1 py-2 rounded-xl bg-slate-100 text-slate-600 text-xs font-semibold">取消</button>
+                    <button @click="addExpenseItem" class="flex-1 py-2 rounded-xl bg-emerald-600 text-white text-xs font-semibold shadow">新增開支</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal: Edit Total Budget -->
+        <div v-if="showEditBudgetModal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div class="bg-white rounded-2xl w-full max-w-sm p-5 space-y-4 shadow-xl">
+                <h3 class="font-bold text-slate-800">設定每月預算上限</h3>
+                <div class="space-y-3 text-xs">
+                    <div>
+                        <label class="block text-slate-600 font-bold mb-1">每月預算總額 ($)</label>
+                        <input type="number" v-model.number="tempBudgetTotal" class="w-full p-2.5 rounded-xl border border-slate-200 outline-none font-bold text-base text-emerald-600">
+                    </div>
+                </div>
+                <div class="flex space-x-2 pt-2">
+                    <button @click="showEditBudgetModal = false" class="flex-1 py-2 rounded-xl bg-slate-100 text-slate-600 text-xs font-semibold">取消</button>
+                    <button @click="saveBudgetTotal" class="flex-1 py-2 rounded-xl bg-emerald-600 text-white text-xs font-semibold shadow">儲存設定</button>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Firebase SDK Imports & App Script -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, doc, setDoc, getDocs, deleteDoc, onSnapshot, query, addDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        const { createApp, ref, computed, onMounted, watch } = Vue;
+
+        createApp({
+            setup() {
+                // Environment variables
+                const appId = typeof __app_id !== 'undefined' ? __app_id : 'smartpantry-default-app';
+                const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : { apiKey: "demo", projectId: "demo" };
+                const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : undefined;
+
+                // Firebase & Auth state
+                const userId = ref('');
+                const householdId = ref(localStorage.getItem('smart_household_id') || 'family-01');
+                let db = null;
+                let auth = null;
+
+                // UI Tabs
+                const currentTab = ref('shopping');
+                const tabs = [
+                    { id: 'shopping', name: '購物清單', icon: 'fa-solid fa-basket-shopping' },
+                    { id: 'fridge', name: '雪櫃管家', icon: 'fa-solid fa-box-archive' },
+                    { id: 'diet', name: '飲食紀錄', icon: 'fa-solid fa-utensils' },
+                    { id: 'budget', name: '預算規劃', icon: 'fa-solid fa-wallet' }
+                ];
+
+                const categories = ['全部', '蔬菜水果', '肉類海鮮', '乳品烘焙', '糧油乾貨', '飲料零食'];
+                const categoriesWithoutAll = categories.filter(c => c !== '全部');
+
+                // Pets
+                const petOptions = [
+                    { id: 'chef', name: '米歇爾', title: '毒舌主廚', emoji: '🧑‍🍳', avatar: '🐱', description: '對食物品味極高，看到垃圾食品會狠狠吐槽你的減肥決心。' },
+                    { id: 'grandpa', name: '老饕爺爺', title: '省錢達人', emoji: '👴', avatar: '🦉', description: '極度在意食材過期與荷包厚度，教你用剩菜變出米芝蓮料理。' },
+                    { id: 'nutri', name: '卡路里', title: '嚴格營養師', emoji: '🥗', avatar: '🦊', description: '盯緊你的蛋白質與碳水比例，拒絕任何過量脂肪。' }
+                ];
+                const selectedPetId = ref(localStorage.getItem('smart_pet_id') || 'chef');
+                const currentPet = computed(() => petOptions.find(p => p.id === selectedPetId.value) || petOptions[0]);
+                const showPetSelectModal = ref(false);
+                const tempSelectedPetId = ref(selectedPetId.value);
+                const petMessage = ref('歡迎使用 SmartPantry！有我在，別想亂買垃圾食物！');
+                const isEating = ref(false);
+                const showPetChatModal = ref(false);
+                const userChatInput = ref('');
+                const currentPetChatReply = ref('');
+
+                // Speech Recognition State
+                const speechLang = ref('zh-HK'); // 'zh-HK' 粵語 / 'zh-CN' 普通話
+                const isListening = ref(false);
+                const activeInputKey = ref(null); // 'newShoppingName', 'newFridgeName', 'newDietFoodName', 'newExpenseTitle', 'userChatInput'
+                let recognitionInstance = null;
+
+                // Data Lists
+                const shoppingList = ref([]);
+                const selectedShoppingCategory = ref('全部');
+                const showAddShoppingModal = ref(false);
+                const newShopping = ref({ name: '', category: '蔬菜水果', qty: '1', estimatedPrice: 30, expiryDays: 7 });
+
+                const fridgeList = ref([]);
+                const showAddFridgeModal = ref(false);
+                const newFridge = ref({ name: '', category: '蔬菜水果', qty: '1', purchaseDate: new Date().toISOString().split('T')[0], expiryDays: 7, expiryDate: '' });
+
+                const dietLogs = ref([]);
+                const showAddDietModal = ref(false);
+                const newDiet = ref({ mealType: '午餐', foodName: '', calories: 500, cost: 45, protein: 25, carbs: 60, fat: 15 });
+                const calorieTarget = ref(2000);
+                const aiImagePreview = ref(null);
+                const aiAnalyzing = ref(false);
+
+                const budgetConfig = ref({ totalBudget: 3500 });
+                const expenseTransactions = ref([]);
+                const showAddExpenseModal = ref(false);
+                const showEditBudgetModal = ref(false);
+                const showSyncModal = ref(false);
+                const tempBudgetTotal = ref(3500);
+                const newExpense = ref({ title: '', amount: 100, category: '食材採購', date: new Date().toISOString().split('T')[0] });
+
+                const toastMessage = ref('');
+                const aiLoading = ref(false);
+                const aiRecipe = ref(null);
+
+                // Initialize Firebase and Auth
+                onMounted(async () => {
+                    try {
+                        const app = initializeApp(firebaseConfig);
+                        auth = getAuth(app);
+                        db = getFirestore(app);
+
+                        if (initialAuthToken) {
+                            await signInWithCustomToken(auth, initialAuthToken);
+                        } else {
+                            await signInAnonymously(auth);
+                        }
+
+                        onAuthStateChanged(auth, (user) => {
+                            if (user) {
+                                userId.value = user.uid;
+                                loadAllDataFromFirestore();
+                            } else {
+                                userId.value = auth.currentUser?.uid || 'anon-' + Math.random().toString(36).substring(2, 9);
+                            }
+                        });
+                    } catch (e) {
+                        console.warn("Firebase offline mode / fallback:", e);
+                        userId.value = 'local-uid-' + Math.random().toString(36).substring(2, 9);
+                        loadLocalFallbackData();
+                    }
+
+                    // Set default expiry date for fridge modal
+                    updateFridgeExpiryDate();
+                });
+
+                // Toast helper
+                const showToast = (msg) => {
+                    toastMessage.value = msg;
+                    setTimeout(() => { toastMessage.value = ''; }, 3000);
+                };
+
+                // Speech Recognition (Voice-to-Text)
+                const toggleSpeechLang = () => {
+                    speechLang.value = speechLang.value === 'zh-HK' ? 'zh-CN' : 'zh-HK';
+                    showToast(`語音辨識已切換為：${speechLang.value === 'zh-HK' ? '廣東話 (粵語)' : '普通話 (Mandarin)'}`);
+                };
+
+                const toggleSpeechRecognition = (inputKey) => {
+                    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+                    if (!SpeechRecognition) {
+                        showToast('您的瀏覽器不支援語音識別功能 (SpeechRecognition API)');
+                        return;
+                    }
+
+                    if (isListening.value) {
+                        if (recognitionInstance) {
+                            recognitionInstance.stop();
+                        }
+                        isListening.value = false;
+                        activeInputKey.value = null;
+                        return;
+                    }
+
+                    activeInputKey.value = inputKey;
+                    recognitionInstance = new SpeechRecognition();
+                    recognitionInstance.lang = speechLang.value;
+                    recognitionInstance.interimResults = false;
+                    recognitionInstance.maxAlternatives = 1;
+
+                    recognitionInstance.onstart = () => {
+                        isListening.value = true;
+                        showToast(`🎙️ 正在聆聽 (${speechLang.value === 'zh-HK' ? '粵語' : '普通話'})... 請對著咪高峰說話`);
+                    };
+
+                    recognitionInstance.onresult = (event) => {
+                        const transcript = event.results[0][0].transcript;
+                        if (inputKey === 'newShoppingName') newShopping.value.name = transcript;
+                        else if (inputKey === 'newFridgeName') newFridge.value.name = transcript;
+                        else if (inputKey === 'newDietFoodName') newDiet.value.foodName = transcript;
+                        else if (inputKey === 'newExpenseTitle') newExpense.value.title = transcript;
+                        else if (inputKey === 'userChatInput') userChatInput.value = transcript;
+
+                        showToast(`成功識別文字: "${transcript}"`);
+                    };
+
+                    recognitionInstance.onerror = (event) => {
+                        console.warn('Speech recognition error:', event.error);
+                        isListening.value = false;
+                        activeInputKey.value = null;
+                    };
+
+                    recognitionInstance.onend = () => {
+                        isListening.value = false;
+                        activeInputKey.value = null;
+                    };
+
+                    try {
+                        recognitionInstance.start();
+                    } catch (e) {
+                        console.error(e);
+                        isListening.value = false;
+                    }
+                };
+
+                // Firestore Sync Paths (Rule 1 & Rule 2 compliant)
+                const saveToFirestore = async (collectionName) => {
+                    if (!db || !userId.value) {
+                        saveLocalFallbackData();
+                        return;
+                    }
+                    try {
+                        let dataToSave = [];
+                        if (collectionName === 'shopping') dataToSave = shoppingList.value;
+                        else if (collectionName === 'fridge') dataToSave = fridgeList.value;
+                        else if (collectionName === 'diet') dataToSave = dietLogs.value;
+                        else if (collectionName === 'budget') {
+                            const refDoc = doc(db, 'artifacts', appId, 'public', 'data', householdId.value + '_budget');
+                            await setDoc(refDoc, { budgetConfig: budgetConfig.value, expenses: expenseTransactions.value });
+                            return;
+                        }
+
+                        const refDoc = doc(db, 'artifacts', appId, 'public', 'data', householdId.value + '_' + collectionName);
+                        await setDoc(refDoc, { items: dataToSave });
+                    } catch (e) {
+                        console.warn("Firestore save error:", e);
+                    }
+                };
+
+                const loadAllDataFromFirestore = async () => {
+                    if (!db) return;
+                    try {
+                        // Shopping
+                        const shopSnap = await getDocs(query(collection(db, 'artifacts', appId, 'public', 'data')));
+                        // Alternatively query specific doc paths
+                        const shopDocRef = doc(db, 'artifacts', appId, 'public', 'data', householdId.value + '_shopping');
+                        onSnapshot(shopDocRef, (docSnap) => {
+                            if (docSnap.exists() && docSnap.data().items) {
+                                shoppingList.value = docSnap.data().items;
+                            }
+                        }, (err) => console.log(err));
+
+                        const fridgeDocRef = doc(db, 'artifacts', appId, 'public', 'data', householdId.value + '_fridge');
+                        onSnapshot(fridgeDocRef, (docSnap) => {
+                            if (docSnap.exists() && docSnap.data().items) {
+                                fridgeList.value = docSnap.data().items;
+                            }
+                        }, (err) => console.log(err));
+
+                        const dietDocRef = doc(db, 'artifacts', appId, 'public', 'data', householdId.value + '_diet');
+                        onSnapshot(dietDocRef, (docSnap) => {
+                            if (docSnap.exists() && docSnap.data().items) {
+                                dietLogs.value = docSnap.data().items;
+                            }
+                        }, (err) => console.log(err));
+
+                        const budgetDocRef = doc(db, 'artifacts', appId, 'public', 'data', householdId.value + '_budget');
+                        onSnapshot(budgetDocRef, (docSnap) => {
+                            if (docSnap.exists()) {
+                                const data = docSnap.data();
+                                if (data.budgetConfig) budgetConfig.value = data.budgetConfig;
+                                if (data.expenses) expenseTransactions.value = data.expenses;
+                            }
+                        }, (err) => console.log(err));
+
+                    } catch (e) {
+                        console.warn("Firestore load error:", e);
+                        loadLocalFallbackData();
+                    }
+                };
+
+                const saveLocalFallbackData = () => {
+                    localStorage.setItem('smart_shopping', JSON.stringify(shoppingList.value));
+                    localStorage.setItem('smart_fridge', JSON.stringify(fridgeList.value));
+                    localStorage.setItem('smart_diet', JSON.stringify(dietLogs.value));
+                    localStorage.setItem('smart_budget', JSON.stringify(expenseTransactions.value));
+                };
+
+                const loadLocalFallbackData = () => {
+                    shoppingList.value = JSON.parse(localStorage.getItem('smart_shopping') || '[]');
+                    fridgeList.value = JSON.parse(localStorage.getItem('smart_fridge') || '[]');
+                    dietLogs.value = JSON.parse(localStorage.getItem('smart_diet') || '[]');
+                    expenseTransactions.value = JSON.parse(localStorage.getItem('smart_budget') || '[]');
+                };
+
+                // Household & UID
+                const saveHouseholdId = () => {
+                    localStorage.setItem('smart_household_id', householdId.value);
+                    showToast('家庭群組 ID 已更新，重新同步數據');
+                    loadAllDataFromFirestore();
+                    showSyncModal.value = false;
+                };
+
+                const copyUserId = () => {
+                    const textarea = document.createElement('textarea');
+                    textarea.value = userId.value;
+                    document.body.appendChild(textarea);
+                    textarea.select();
+                    try {
+                        document.execCommand('copy');
+                        showToast('Firebase UID 已成功複製到剪貼簿！');
+                    } catch (err) {
+                        showToast('複製失敗');
+                    }
+                    document.body.removeChild(textarea);
+                };
+
+                // Pet Interactivity
+                const confirmPetSelection = () => {
+                    selectedPetId.value = tempSelectedPetId.value;
+                    localStorage.setItem('smart_pet_id', selectedPetId.value);
+                    showPetSelectModal.value = false;
+                    petMessage.value = `換了新夥伴！我是${currentPet.value.name}，別想在我面前偷吃宵夜！`;
+                    showToast(`已成功切換寵物為：${currentPet.value.name}`);
+                };
+
+                const handlePetClick = () => {
+                    showPetChatModal.value = true;
+                    userChatInput.value = '';
+                    const remarks = [
+                        "冰箱裡的蔬菜快爛掉了，你還在滑手機？",
+                        "今天攝取的熱量已經超標了，建議你立刻去樓下跑 5 公里！",
+                        "這個月的預算快被你敗光了，少喝一杯手搖飲會死嗎？",
+                        "哼，難得看你還算乖，記得按時清理雪櫃！"
+                    ];
+                    currentPetChatReply.value = remarks[Math.floor(Math.random() * remarks.length)];
+                };
+
+                const sendManualPetChat = async () => {
+                    if (!userChatInput.value.trim()) return;
+                    const question = userChatInput.value.trim();
+                    userChatInput.value = '';
+                    currentPetChatReply.value = `正在思考怎麼毒舌吐槽你...`;
+
+                    try {
+                        const apiKey = "";
+                        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`;
+                        const response = await fetch(apiUrl, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                contents: [{ parts: [{ text: `你是一個毒舌又幽默的智能飲食寵物助手（名字：${currentPet.value.name}，身份：${currentPet.value.title}）。請用毒舌、犀利但帶點趣味的語氣回覆用戶：「${question}」` }] }]
+                            })
+                        });
+                        const result = await response.json();
+                        const reply = result?.candidates?.[0]?.content?.parts?.[0]?.text;
+                        currentPetChatReply.value = reply || '哼，本大爺今天不想說話！';
+                        petMessage.value = currentPetChatReply.value;
+                    } catch (e) {
+                        currentPetChatReply.value = '哎呀，連 AI 伺服器也受不了你的飲食習慣而罷工了！';
+                    }
+                };
+
+                // Shopping List Computed & Methods
+                const filteredShoppingList = computed(() => {
+                    if (selectedShoppingCategory.value === '全部') return shoppingList.value;
+                    return shoppingList.value.filter(i => i.category === selectedShoppingCategory.value);
+                });
+
+                const addShoppingItem = () => {
+                    if (!newShopping.value.name.trim()) {
+                        showToast('請輸入食材名稱');
+                        return;
+                    }
+                    shoppingList.value.push({
+                        id: 'shop-' + Date.now(),
+                        name: newShopping.value.name,
+                        category: newShopping.value.category,
+                        qty: newShopping.value.qty || '1',
+                        estimatedPrice: newShopping.value.estimatedPrice || 30,
+                        expiryDays: newShopping.value.expiryDays || 7,
+                        bought: false,
+                        createdBy: userId.value
+                    });
+                    newShopping.value.name = '';
+                    showAddShoppingModal.value = false;
+                    saveToFirestore('shopping');
+                    showToast('已成功新增至購物清單');
+                };
+
+                const toggleShoppingBought = (item) => {
+                    item.bought = !item.bought;
+                    saveToFirestore('shopping');
+                };
+
+                const deleteShoppingItem = (id) => {
+                    shoppingList.value = shoppingList.value.filter(i => i.id !== id);
+                    saveToFirestore('shopping');
+                };
+
+                const hasBoughtItems = computed(() => shoppingList.value.some(i => i.bought));
+                const boughtCount = computed(() => shoppingList.value.filter(i => i.bought).length);
+                const totalBoughtCost = computed(() => shoppingList.value.filter(i => i.bought).reduce((acc, cur) => acc + (Number(cur.estimatedPrice) || 0), 0));
+
+                const importBoughtToFridge = () => {
+                    const boughtItems = shoppingList.value.filter(i => i.bought);
+                    const todayStr = new Date().toISOString().split('T')[0];
+
+                    boughtItems.forEach(item => {
+                        const days = item.expiryDays || 7;
+                        const expDate = new Date();
+                        expDate.setDate(expDate.getDate() + Number(days));
+
+                        fridgeList.value.push({
+                            id: 'fridge-' + Date.now() + '-' + Math.random().toString(36).substring(2,5),
+                            name: item.name,
+                            category: item.category,
+                            qty: item.qty,
+                            purchaseDate: todayStr,
+                            expiryDate: expDate.toISOString().split('T')[0]
+                        });
+                    });
+
+                    // Add to budget expense
+                    if (totalBoughtCost.value > 0) {
+                        expenseTransactions.value.push({
+                            id: 'exp-' + Date.now(),
+                            title: `採購清單批量匯入 (${boughtItems.length}項)`,
+                            amount: totalBoughtCost.value,
+                            category: '食材採購',
+                            date: todayStr
+                        });
+                        saveToFirestore('budget');
+                    }
+
+                    // Remove bought items from shopping list
+                    shoppingList.value = shoppingList.value.filter(i => !i.bought);
+                    saveToFirestore('shopping');
+                    saveToFirestore('fridge');
+                    showToast(`成功將 ${boughtItems.length} 項採購物品轉入雪櫃並記帳 $${totalBoughtCost.value}！`);
+                };
+
+                // Fridge Expiry Logic
+                const updateFridgeExpiryDate = () => {
+                    const pDate = new Date(newFridge.value.purchaseDate || Date.now());
+                    pDate.setDate(pDate.getDate() + Number(newFridge.value.expiryDays || 7));
+                    newFridge.value.expiryDate = pDate.toISOString().split('T')[0];
+                };
+                const onExpiryDaysChange = () => updateFridgeExpiryDate();
+                const onPurchaseDateChange = () => updateFridgeExpiryDate();
+                const setPresetExpiryDays = (days) => {
+                    newFridge.value.expiryDays = days;
+                    updateFridgeExpiryDate();
+                };
+
+                const openAddFridgeModal = () => {
+                    newFridge.value = { name: '', category: '蔬菜水果', qty: '1', purchaseDate: new Date().toISOString().split('T')[0], expiryDays: 7, expiryDate: '' };
+                    updateFridgeExpiryDate();
+                    showAddFridgeModal.value = true;
+                };
+
+                const addFridgeItem = () => {
+                    if (!newFridge.value.name.trim()) {
+                        showToast('請輸入食材名稱');
+                        return;
+                    }
+                    fridgeList.value.push({
+                        id: 'fridge-' + Date.now(),
+                        name: newFridge.value.name,
+                        category: newFridge.value.category,
+                        qty: newFridge.value.qty || '1',
+                        purchaseDate: newFridge.value.purchaseDate,
+                        expiryDate: newFridge.value.expiryDate
+                    });
+                    showAddFridgeModal.value = false;
+                    saveToFirestore('fridge');
+                    showToast('已成功新增食材至雪櫃');
+                };
+
+                const deleteFridgeItem = (id) => {
+                    fridgeList.value = fridgeList.value.filter(i => i.id !== id);
+                    saveToFirestore('fridge');
+                };
+
+                const getDaysLeft = (expiryDateStr) => {
+                    if (!expiryDateStr) return 99;
+                    const diff = new Date(expiryDateStr) - new Date();
+                    return Math.ceil(diff / (1000 * 60 * 60 * 24));
+                };
+
+                const getDaysLeftText = (expiryDateStr) => {
+                    const days = getDaysLeft(expiryDateStr);
+                    if (days < 0) return `已過期 ${Math.abs(days)} 天`;
+                    if (days === 0) return `今天到期`;
+                    return `剩餘 ${days} 天`;
+                };
+
+                const getDaysLeftClass = (expiryDateStr) => {
+                    const days = getDaysLeft(expiryDateStr);
+                    if (days <= 0) return 'bg-red-100 text-red-700 font-bold';
+                    if (days <= 3) return 'bg-amber-100 text-amber-800 font-bold';
+                    return 'bg-emerald-100 text-emerald-800';
+                };
+
+                const expiringItems = computed(() => {
+                    return fridgeList.value.filter(item => getDaysLeft(item.expiryDate) <= 3);
+                });
+
+                // AI Recipe Recommendation
+                const getAiRecipeRecommendation = async () => {
+                    if (fridgeList.value.length === 0) {
+                        showToast('雪櫃裡沒有食材，無法為你推薦食譜！');
+                        return;
+                    }
+                    aiLoading.value = true;
+                    try {
+                        const itemsStr = fridgeList.value.map(i => i.name).join(', ');
+                        const apiKey = "";
+                        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`;
+                        const response = await fetch(apiUrl, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                contents: [{ parts: [{ text: `基於現有雪櫃食材 [${itemsStr}]，請推薦一道創意料理，必須輸出符合以下 JSON 格式：{"recipeName": "...", "description": "...", "ingredients": [{"name": "...", "inFridge": true}], "missingIngredients": [{"name": "..."}]}` }] }],
+                                generationConfig: { responseMimeType: "application/json" }
+                            })
+                        });
+                        const result = await response.json();
+                        const jsonText = result?.candidates?.[0]?.content?.parts?.[0]?.text;
+                        if (jsonText) {
+                            aiRecipe.value = JSON.parse(jsonText);
+                            showToast('AI 已成功為你量身打造創意食譜！');
+                        }
+                    } catch (e) {
+                        showToast('AI 產生食譜失敗，請稍後再試');
+                    } finally {
+                        aiLoading.value = false;
+                    }
+                };
+
+                const addMissingToShoppingList = (missing) => {
+                    missing.forEach(m => {
+                        shoppingList.value.push({
+                            id: 'shop-' + Date.now() + '-' + Math.random().toString(36).substring(2,4),
+                            name: m.name,
+                            category: '蔬菜水果',
+                            qty: '1',
+                            estimatedPrice: 35,
+                            expiryDays: 7,
+                            bought: false,
+                            createdBy: userId.value
+                        });
+                    });
+                    saveToFirestore('shopping');
+                    showToast(`已將 ${missing.length} 項缺少食材加入購物清單！`);
+                };
+
+                // AI Diet Image Recognition & Logging
+                const openAddDietModal = () => {
+                    newDiet.value = { mealType: '午餐', foodName: '', calories: 500, cost: 45, protein: 25, carbs: 60, fat: 15 };
+                    aiImagePreview.value = null;
+                    showAddDietModal.value = true;
+                };
+
+                const handleDietImageUpload = (event) => {
+                    const file = event.target.files[0];
+                    if (!file) return;
+                    const reader = new FileReader();
+                    reader.onload = async (e) => {
+                        aiImagePreview.value = e.target.result;
+                        await analyzeImageWithGemini(e.target.result);
+                    };
+                    reader.readAsDataURL(file);
+                };
+
+                const analyzeImageWithGemini = async (dataUrl) => {
+                    aiAnalyzing.value = true;
+                    try {
+                        const base64Data = dataUrl.split(',')[1];
+                        const apiKey = "";
+                        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image:generateContent?key=${apiKey}`;
+                        const response = await fetch(apiUrl, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                contents: [{
+                                    role: 'user',
+                                    parts: [
+                                        { text: "識別圖片中的餐點名稱、預估熱量(kcal)、花費金額($)、蛋白質(g)、碳水(g)、脂肪(g)。必須輸出 JSON 格式：{\"foodName\": \"...\", \"calories\": 500, \"cost\": 45, \"protein\": 25, \"carbs\": 60, \"fat\": 15}" },
+                                        { inlineData: { mimeType: "image/jpeg", data: base64Data } }
+                                    ]
+                                }],
+                                generationConfig: { responseMimeType: "application/json" }
+                            })
+                        });
+                        const result = await response.json();
+                        const jsonText = result?.candidates?.[0]?.content?.parts?.[0]?.text;
+                        if (jsonText) {
+                            const parsed = JSON.parse(jsonText);
+                            newDiet.value.foodName = parsed.foodName || '精美餐點';
+                            newDiet.value.calories = parsed.calories || 500;
+                            newDiet.value.cost = parsed.cost || 40;
+                            newDiet.value.protein = parsed.protein || 20;
+                            newDiet.value.carbs = parsed.carbs || 50;
+                            newDiet.value.fat = parsed.fat || 15;
+                            showToast('AI 成功識別餐點營養與熱量！');
+                        }
+                    } catch (e) {
+                        showToast('AI 圖像識別失敗，請手動填寫');
+                    } finally {
+                        aiAnalyzing.value = false;
+                    }
+                };
+
+                const addDietLog = () => {
+                    if (!newDiet.value.foodName.trim()) {
+                        showToast('請輸入食物名稱');
+                        return;
+                    }
+                    const todayStr = new Date().toISOString().split('T')[0];
+                    dietLogs.value.unshift({
+                        id: 'diet-' + Date.now(),
+                        mealType: newDiet.value.mealType,
+                        foodName: newDiet.value.foodName,
+                        calories: Number(newDiet.value.calories) || 0,
+                        cost: Number(newDiet.value.cost) || 0,
+                        protein: Number(newDiet.value.protein) || 0,
+                        carbs: Number(newDiet.value.carbs) || 0,
+                        fat: Number(newDiet.value.fat) || 0,
+                        imageUrl: aiImagePreview.value,
+                        date: todayStr
+                    });
+
+                    // Add expense if cost > 0
+                    if (newDiet.value.cost > 0) {
+                        expenseTransactions.value.push({
+                            id: 'exp-' + Date.now(),
+                            title: `外食餐飲: ${newDiet.value.foodName}`,
+                            amount: Number(newDiet.value.cost),
+                            category: '外食餐飲',
+                            date: todayStr
+                        });
+                        saveToFirestore('budget');
+                    }
+
+                    showAddDietModal.value = false;
+                    saveToFirestore('diet');
+                    showToast('餐點紀錄已儲存！');
+
+                    // Pet commentary on diet
+                    if (newDiet.value.calories > 700) {
+                        petMessage.value = `哇塞！這餐 ${newDiet.value.calories} 大卡！你今天是要去搬磚嗎？`;
+                    }
+                };
+
+                const deleteDietLog = (id) => {
+                    dietLogs.value = dietLogs.value.filter(i => i.id !== id);
+                    saveToFirestore('diet');
+                };
+
+                const getMealIcon = (type) => {
+                    if (type === '早餐') return '🍳';
+                    if (type === '午餐') return '🍱';
+                    if (type === '晚餐') return '🍲';
+                    return '🍪';
+                };
+
+                const todayDietLogs = computed(() => {
+                    const todayStr = new Date().toISOString().split('T')[0];
+                    return dietLogs.value.filter(l => l.date === todayStr);
+                });
+
+                const totalTodayCalories = computed(() => todayDietLogs.value.reduce((acc, cur) => acc + cur.calories, 0));
+                const calorieProgress = computed(() => Math.round((totalTodayCalories.value / calorieTarget.value) * 100));
+
+                const todayMacros = computed(() => {
+                    return todayDietLogs.value.reduce((acc, cur) => {
+                        acc.protein += cur.protein;
+                        acc.carbs += cur.carbs;
+                        acc.fat += cur.fat;
+                        return acc;
+                    }, { protein: 0, carbs: 0, fat: 0 });
+                });
+
+                // Budget & Expenses
+                const totalMonthlySpent = computed(() => expenseTransactions.value.reduce((acc, cur) => acc + (Number(cur.amount) || 0), 0));
+                const overallBudgetProgress = computed(() => Math.round((totalMonthlySpent.value / budgetConfig.value.totalBudget) * 100));
+                const filteredBudgetTransactions = computed(() => expenseTransactions.value);
+
+                const openEditBudgetModal = () => {
+                    tempBudgetTotal.value = budgetConfig.value.totalBudget;
+                    showEditBudgetModal.value = true;
+                };
+
+                const saveBudgetTotal = () => {
+                    budgetConfig.value.totalBudget = Number(tempBudgetTotal.value) || 3500;
+                    showEditBudgetModal.value = false;
+                    saveToFirestore('budget');
+                    showToast('預算上限已更新！');
+                };
+
+                const addExpenseItem = () => {
+                    if (!newExpense.value.title.trim() || !newExpense.value.amount) {
+                        showToast('請填寫完整開支資訊');
+                        return;
+                    }
+                    expenseTransactions.value.unshift({
+                        id: 'exp-' + Date.now(),
+                        title: newExpense.value.title,
+                        amount: Number(newExpense.value.amount),
+                        category: newExpense.value.category,
+                        date: newExpense.value.date
+                    });
+                    showAddExpenseModal.value = false;
+                    saveToFirestore('budget');
+                    showToast('手動記帳成功！');
+                };
+
+                const deleteExpenseTransaction = (id) => {
+                    expenseTransactions.value = expenseTransactions.value.filter(i => i.id !== id);
+                    saveToFirestore('budget');
+                };
+
+                // Camera receipt/shopping list upload handlers
+                const handleShoppingImageUpload = async (event) => {
+                    const file = event.target.files[0];
+                    if (!file) return;
+                    showToast('AI 正在識別採購收據或清單圖片...');
+                    const reader = new FileReader();
+                    reader.onload = async (e) => {
+                        try {
+                            const base64Data = e.target.result.split(',')[1];
+                            const apiKey = "";
+                            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image:generateContent?key=${apiKey}`;
+                            const response = await fetch(apiUrl, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    contents: [{
+                                        role: 'user',
+                                        parts: [
+                                            { text: "識別圖片中的採購清單或商品項目，輸出 JSON 陣列格式：[{\"name\": \"...\", \"category\": \"蔬菜水果\", \"qty\": \"1\", \"estimatedPrice\": 30}]" },
+                                            { inlineData: { mimeType: "image/jpeg", data: base64Data } }
+                                        ]
+                                    }],
+                                    generationConfig: { responseMimeType: "application/json" }
+                                })
+                            });
+                            const result = await response.json();
+                            const jsonText = result?.candidates?.[0]?.content?.parts?.[0]?.text;
+                            if (jsonText) {
+                                const parsedList = JSON.parse(jsonText);
+                                parsedList.forEach(item => {
+                                    shoppingList.value.push({
+                                        id: 'shop-' + Date.now() + '-' + Math.random().toString(36).substring(2,4),
+                                        name: item.name || '未知商品',
+                                        category: item.category || '蔬菜水果',
+                                        qty: item.qty || '1',
+                                        estimatedPrice: item.estimatedPrice || 30,
+                                        expiryDays: 7,
+                                        bought: false,
+                                        createdBy: userId.value
+                                    });
+                                });
+                                saveToFirestore('shopping');
+                                showToast(`AI 成功識別並加入 ${parsedList.length} 項購物商品！`);
+                            }
+                        } catch (err) {
+                            showToast('AI 識別圖片清單失敗');
+                        }
+                    };
+                    reader.readAsDataURL(file);
+                };
+
+                const handleFridgeImageUpload = async (event) => {
+                    const file = event.target.files[0];
+                    if (!file) return;
+                    showToast('AI 正在掃描雪櫃內部食材...');
+                    const reader = new FileReader();
+                    reader.onload = async (e) => {
+                        try {
+                            const base64Data = e.target.result.split(',')[1];
+                            const apiKey = "";
+                            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image:generateContent?key=${apiKey}`;
+                            const response = await fetch(apiUrl, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    contents: [{
+                                        role: 'user',
+                                        parts: [
+                                            { text: "識別雪櫃照片中的所有食材，輸出 JSON 陣列格式：[{\"name\": \"...\", \"category\": \"蔬菜水果\", \"qty\": \"1\", \"expiryDays\": 7}]" },
+                                            { inlineData: { mimeType: "image/jpeg", data: base64Data } }
+                                        ]
+                                    }],
+                                    generationConfig: { responseMimeType: "application/json" }
+                                })
+                            });
+                            const result = await response.json();
+                            const jsonText = result?.candidates?.[0]?.content?.parts?.[0]?.text;
+                            if (jsonText) {
+                                const parsedList = JSON.parse(jsonText);
+                                const todayStr = new Date().toISOString().split('T')[0];
+                                parsedList.forEach(item => {
+                                    const days = item.expiryDays || 7;
+                                    const expDate = new Date();
+                                    expDate.setDate(expDate.getDate() + Number(days));
+
+                                    fridgeList.value.push({
+                                        id: 'fridge-' + Date.now() + '-' + Math.random().toString(36).substring(2,4),
+                                        name: item.name || '食材',
+                                        category: item.category || '蔬菜水果',
+                                        qty: item.qty || '1',
+                                        purchaseDate: todayStr,
+                                        expiryDate: expDate.toISOString().split('T')[0]
+                                    });
+                                });
+                                saveToFirestore('fridge');
+                                showToast(`AI 成功掃描並補充 ${parsedList.length} 項雪櫃食材！`);
+                            }
+                        } catch (err) {
+                            showToast('AI 掃描雪櫃失敗');
+                        }
+                    };
+                    reader.readAsDataURL(file);
+                };
+
+                return {
+                    userId, householdId, showSyncModal, saveHouseholdId, copyUserId,
+                    currentTab, tabs, shoppingCategories: categories, selectedShoppingCategory,
+                    filteredShoppingList, showAddShoppingModal, newShopping, addShoppingItem,
+                    toggleShoppingBought, deleteShoppingItem, hasBoughtItems, boughtCount, totalBoughtCost, importBoughtToFridge,
+                    fridgeList, showAddFridgeModal, newFridge, openAddFridgeModal, addFridgeItem, deleteFridgeItem,
+                    expiringItems, getDaysLeftText, getDaysLeftClass, aiLoading, aiRecipe, getAiRecipeRecommendation, addMissingToShoppingList,
+                    dietLogs, showAddDietModal, newDiet, openAddDietModal, addDietLog, deleteDietLog, getMealIcon,
+                    todayDietLogs, totalTodayCalories, calorieTarget, calorieProgress, todayMacros,
+                    budgetConfig, expenseTransactions, showAddExpenseModal, showEditBudgetModal, tempBudgetTotal, newExpense,
+                    totalMonthlySpent, overallBudgetProgress, filteredBudgetTransactions,
+                    openEditBudgetModal, saveBudgetTotal, addExpenseItem, deleteExpenseTransaction,
+                    petOptions, selectedPetId, currentPet, showPetSelectModal, tempSelectedPetId, confirmPetSelection,
+                    petMessage, isEating, showPetChatModal, userChatInput, currentPetChatReply, handlePetClick, sendManualPetChat,
+                    speechLang, toggleSpeechLang, isListening, activeInputKey, toggleSpeechRecognition,
+                    toastMessage, handleShoppingImageUpload, handleFridgeImageUpload, handleDietImageUpload,
+                    aiImagePreview, aiAnalyzing, onExpiryDaysChange, onPurchaseDateChange, setPresetExpiryDays
+                };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
